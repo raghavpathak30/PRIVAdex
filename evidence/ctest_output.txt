@@ -1,0 +1,32 @@
+Internal ctest changing into directory: /home/raghavp/dark_pool/build
+Test project /home/raghavp/dark_pool/build
+      Start  1: smoke_test
+ 1/13 Test  #1: smoke_test .......................................................   Passed    0.05 sec
+      Start  2: matching_server_integration
+ 2/13 Test  #2: matching_server_integration ......................................   Passed    0.57 sec
+      Start  3: submit_order_pytest
+ 3/13 Test  #3: submit_order_pytest ..............................................   Passed    3.32 sec
+      Start  4: settle_bridge_pytest
+ 4/13 Test  #4: settle_bridge_pytest .............................................   Passed    0.53 sec
+      Start  5: benchmark_gate
+ 5/13 Test  #5: benchmark_gate ...................................................   Passed    5.72 sec
+      Start  6: CKKSContextDP: noise budget positive after depth-4 (degree-27)
+ 6/13 Test  #6: CKKSContextDP: noise budget positive after depth-4 (degree-27) ...   Passed    0.25 sec
+      Start  7: CKKSContextDP: noise budget positive after depth-3 (degree-15)
+ 7/13 Test  #7: CKKSContextDP: noise budget positive after depth-3 (degree-15) ...   Passed    0.18 sec
+      Start  8: BFVContextDP: construction succeeds
+ 8/13 Test  #8: BFVContextDP: construction succeeds ..............................   Passed    0.16 sec
+      Start  9: order_encoder: CKKS slot layout
+ 9/13 Test  #9: order_encoder: CKKS slot layout ..................................   Passed    0.00 sec
+      Start 10: bfv_equality_eval: result == 0 when bid == ask
+10/13 Test #10: bfv_equality_eval: result == 0 when bid == ask ...................   Passed    0.21 sec
+      Start 11: bfv_equality_eval: result != 0 when bid != ask
+11/13 Test #11: bfv_equality_eval: result != 0 when bid != ask ...................   Passed    0.20 sec
+      Start 12: sign_poly_eval: depth invariant (degree-27)
+12/13 Test #12: sign_poly_eval: depth invariant (degree-27) ......................   Passed    0.28 sec
+      Start 13: slot_blinding: blind + unblind is identity
+13/13 Test #13: slot_blinding: blind + unblind is identity .......................   Passed    0.29 sec
+
+100% tests passed, 0 tests failed out of 13
+
+Total Test time (real) =  11.76 sec

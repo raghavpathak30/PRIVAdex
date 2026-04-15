@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package darkpool;
+
+message MatchRequest {
+  bytes buy_order = 1;
+  bytes sell_order = 2;
+  string request_id = 3;
+  string pool_id = 4;
+  uint64 order_nonce = 5;
+  bool use_bfv = 6;
+  string trader_id = 7;
+  bytes nonce = 8;
+}
+
+message MatchResponse {
+  bytes result_ciphertext = 1;
+  bytes match_certificate = 2;
+  string request_id = 3;
+  string error_message = 4;
+  bool is_error = 5;
+}
+
+service MatchingService {
+  rpc SubmitOrder(MatchRequest) returns (MatchResponse);
+  rpc ExecuteMatch(MatchRequest) returns (MatchResponse);
+  rpc Ping(PingRequest) returns (PongResponse);
+}
+
+message PingRequest {
+  string message = 1;
+}
+
+message PongResponse {
+  string message = 1;
+}
