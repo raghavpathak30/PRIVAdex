@@ -7,4 +7,4 @@ __pycache__/
 .env
 
 # Keep local-only settlement credentials out of git if populated
-# settlement_config.json
+settlement_config.json
