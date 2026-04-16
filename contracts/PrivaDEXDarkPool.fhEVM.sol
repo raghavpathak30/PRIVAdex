@@ -11,25 +11,25 @@ contract PrivaDEXDarkPoolFHEVM {
         address trader;
     }
 
-    address public authorizedSettler;
+    address public settler;
     Order[] private orders;
+    mapping(bytes32 => bool) public settledRequestIds;
 
     event OrderSubmitted(uint256 indexed order_id, address indexed trader);
     event MatchExecuted(bytes32 indexed request_id, euint32 match_qty);
 
     modifier onlyAuthorizedSettler() {
-        require(msg.sender == authorizedSettler, "only authorized settler");
+        require(msg.sender == settler, "only authorized settler");
         _;
     }
 
-    constructor(address initialAuthorizedSettler) {
-        require(initialAuthorizedSettler != address(0), "authorized settler required");
-        authorizedSettler = initialAuthorizedSettler;
+    constructor() {
+        settler = msg.sender;
     }
 
-    function setAuthorizedSettler(address newAuthorizedSettler) external onlyAuthorizedSettler {
-        require(newAuthorizedSettler != address(0), "authorized settler required");
-        authorizedSettler = newAuthorizedSettler;
+    function setSettler(address newSettler) external onlyAuthorizedSettler {
+        require(newSettler != address(0), "settler required");
+        settler = newSettler;
     }
 
     // Encrypted order submission path: ciphertext handles are converted with TFHE.asEuint32().
@@ -55,6 +55,7 @@ contract PrivaDEXDarkPoolFHEVM {
         uint256 orderBId,
         bytes32 request_id
     ) external onlyAuthorizedSettler {
+        require(!settledRequestIds[request_id], "duplicate request_id");
         require(orderAId < orders.length, "orderA out of range");
         require(orderBId < orders.length, "orderB out of range");
 
@@ -64,6 +65,7 @@ contract PrivaDEXDarkPoolFHEVM {
         ebool matched = TFHE.eq(orderA.bid, orderB.ask);
         euint32 match_qty = TFHE.select(matched, orderA.qty, TFHE.asEuint32(0));
 
+        settledRequestIds[request_id] = true;
         emit MatchExecuted(request_id, match_qty);
     }
 
