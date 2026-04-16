@@ -87,6 +87,15 @@ def generate_request_id(order_a_id: int, order_b_id: int) -> bytes:
     return Web3.keccak(payload)
 
 
+def parse_request_id(request_id: str) -> bytes:
+    rid = request_id.strip().lower()
+    if rid.startswith("0x"):
+        rid = rid[2:]
+    if not re.fullmatch(r"[0-9a-f]{64}", rid):
+        raise ValueError("request_id must be 32-byte hex (64 hex chars, optional 0x prefix)")
+    return bytes.fromhex(rid)
+
+
 def parse_order_ids_from_log(log_path: Path) -> Optional[Tuple[int, int]]:
     text = log_path.read_text(encoding="utf-8", errors="replace")
     for line in reversed(text.splitlines()):
@@ -120,18 +129,18 @@ def parse_order_ids_from_json(json_path: Path) -> Optional[Tuple[int, int]]:
     return None
 
 
-def submit_match(order_a_id: int, order_b_id: int) -> str:
+def submit_match(order_a_id: int, order_b_id: int, request_id: Optional[str] = None) -> str:
     w3, private_key, contract_address = load_web3()
     contract = get_contract(w3, contract_address)
 
     account = w3.eth.account.from_key(private_key)
-    request_id = generate_request_id(order_a_id, order_b_id)
+    request_id_bytes = parse_request_id(request_id) if request_id else generate_request_id(order_a_id, order_b_id)
 
     # Pre-check replay mapping for defense in depth.
-    if contract.functions.settledRequestIds(request_id).call():
-        raise RuntimeError("generated request_id already settled; retry")
+    if contract.functions.settledRequestIds(request_id_bytes).call():
+        raise RuntimeError("Contract Revert: Duplicate request_id")
 
-    tx = contract.functions.matchOrders(order_a_id, order_b_id, request_id).build_transaction(
+    tx = contract.functions.matchOrders(order_a_id, order_b_id, request_id_bytes).build_transaction(
         {
             "from": account.address,
             "nonce": w3.eth.get_transaction_count(account.address),
@@ -149,7 +158,7 @@ def submit_match(order_a_id: int, order_b_id: int) -> str:
     receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
 
     if receipt.status != 1:
-        raise RuntimeError(f"matchOrders reverted: tx={tx_hash.hex()}")
+        raise RuntimeError(f"Contract Revert: tx={tx_hash.hex()}")
 
     print(
         "submitted match",
@@ -158,11 +167,25 @@ def submit_match(order_a_id: int, order_b_id: int) -> str:
                 "tx_hash": tx_hash.hex(),
                 "order_a_id": order_a_id,
                 "order_b_id": order_b_id,
-                "request_id": request_id.hex(),
+                "request_id": request_id_bytes.hex(),
                 "block_number": receipt.blockNumber,
             },
             indent=2,
         ),
+    )
+
+    print(
+        "BRIDGE_RESULT="
+        + json.dumps(
+            {
+                "tx_hash": tx_hash.hex(),
+                "order_a_id": order_a_id,
+                "order_b_id": order_b_id,
+                "request_id": request_id_bytes.hex(),
+                "block_number": receipt.blockNumber,
+            },
+            separators=(",", ":"),
+        )
     )
 
     return tx_hash.hex()
@@ -174,6 +197,7 @@ def main() -> None:
     parser.add_argument("--order-b", type=int, help="Order B ID")
     parser.add_argument("--log", type=Path, help="Path to matching_server log to parse")
     parser.add_argument("--json", type=Path, help="Path to JSON output file to parse")
+    parser.add_argument("--request-id", type=str, help="Optional bytes32 request_id hex (for replay checks)")
     args = parser.parse_args()
 
     order_ids: Optional[Tuple[int, int]] = None
@@ -190,8 +214,12 @@ def main() -> None:
             "Could not determine order IDs. Provide --order-a/--order-b, or a parseable --json/--log source."
         )
 
-    submit_match(order_ids[0], order_ids[1])
+    submit_match(order_ids[0], order_ids[1], args.request_id)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        print(f"ERROR: {exc}")
+        raise SystemExit(1)

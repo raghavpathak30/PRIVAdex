@@ -1,0 +1,8 @@
+{
+  "match_result": {
+    "order_a_id": 0,
+    "order_b_id": 1,
+    "source": "matching_server"
+  },
+  "status": "matched"
+}

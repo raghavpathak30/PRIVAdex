@@ -91,3 +91,21 @@ For the full 17-hop encrypted data lifecycle, slot layout, key custody model, an
 Phase A introduces [contracts/PrivaDEXDarkPool.fhEVM.sol](contracts/PrivaDEXDarkPool.fhEVM.sol), an on-chain fhEVM translation of the SEAL BFV equality matching path. It ports the core match primitive from BFV equality evaluation to `TFHE.eq()` and computes encrypted match quantity with `TFHE.select()`, while preserving authorized-settler execution control for match finalization.
 
 Current encrypted order fields are typed as `euint32`. This implies bid/ask/qty domains must fit within `uint32` bounds; if pool tick or quantity ranges exceed this, the contract should migrate to wider encrypted integer types in a follow-up phase.
+
+### Step 15 E2E Verification Modes
+
+Use these two targets to separate local developer behavior from strict CI behavior:
+
+- `make e2e-test`
+	- Uses local RPC/deploy wiring and runs `tests/test_e2e_settlement.py`.
+	- On a plain Hardhat node (no TFHE runtime), the test is expected to be **Skipped** with reason: missing fhEVM precompiles.
+- `make e2e-test-fhevm`
+	- Runs a strict pre-flight RPC check against TFHE precompile address `0x000000000000000000000000000000000000005d`.
+	- If `eth_getCode` at that address is empty (`0x`/`0x0`), it hard-fails with:
+		`CRITICAL: Target RPC does not support TFHE precompiles. Use 'fhevm-hardhat' node to run this test.`
+	- If pre-flight passes, it runs the same pytest with `REQUIRE_FHEVM=1`, which converts runtime-missing conditions into a **Failed** test (no skip allowed).
+
+Interpretation:
+
+- **Skipped** in `e2e-test`: local dev environment is not fhevm-enabled.
+- **Failed** in `e2e-test-fhevm`: regression or misconfigured fhevm CI runtime.
