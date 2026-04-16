@@ -20,7 +20,8 @@ seal::Ciphertext hoisted_tree_sum_dp(
 
     std::vector<seal::Ciphertext> rotated(9);
 
-    #pragma omp parallel for schedule(static)
+    // SEAL Evaluator is not thread-safe. Keep rotations sequential unless
+    // each thread has its own Evaluator instance.
     for (int i = 0; i < 9; ++i) {
         ev.rotate_vector(ct, STEPS_DP[i], gk, rotated[i]);
     }

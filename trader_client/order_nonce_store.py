@@ -10,10 +10,12 @@ from typing import Callable
 class OrderNonceStore:
     def __init__(
         self,
-        db_path: str | Path = ":memory:",
+        db_path: str | Path | None = None,
         expiry_seconds: int = 300,
         now_fn: Callable[[], int] | None = None,
     ) -> None:
+        if db_path is None:
+            db_path = Path(__file__).resolve().parent / "nonce_store.sqlite"
         self._db_path = str(db_path)
         self._expiry_seconds = int(expiry_seconds)
         self._now_fn = now_fn or (lambda: int(time.time()))

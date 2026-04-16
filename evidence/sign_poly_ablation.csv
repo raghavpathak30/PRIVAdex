@@ -1,0 +1,3 @@
+variant,degree,depth_target,criterion,status,notes
+ckks_sign_poly_d27,27,4,"sign(+/-0.5) in [0.995,1.005]; sign(+/-0.1) in [0.9,1.1]; sign(0) in [-0.1,0.1]",PASS,Current production CKKS sign path gate
+d27_coeff_validation_script,27,na,tests/validate_sign_coeffs.py executes without coefficient bound failures,PASS,Post-audit blocker hardening evidence

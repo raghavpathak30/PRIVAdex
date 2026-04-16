@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import pathlib
+import secrets
 import subprocess
 import sys
+import tempfile
 
 import grpc
 import pytest
@@ -53,6 +56,28 @@ def running_server(address: str = "127.0.0.1:50073"):
     if not SERVER_BINARY.exists():
         raise RuntimeError(f"matching_server binary not found at {SERVER_BINARY}")
     proc = subprocess.Popen([str(SERVER_BINARY), address], cwd=BUILD_DIR)
+    channel = grpc.insecure_channel(address)
+    grpc.channel_ready_future(channel).result(timeout=15)
+    try:
+        yield proc
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)
+
+
+@contextlib.contextmanager
+def running_server_with_nonce_db(db_path: pathlib.Path, address: str = "127.0.0.1:50073"):
+    if not SERVER_BINARY.exists():
+        raise RuntimeError(f"matching_server binary not found at {SERVER_BINARY}")
+
+    env = os.environ.copy()
+    env["DARKPOOL_NONCE_DB"] = str(db_path)
+
+    proc = subprocess.Popen([str(SERVER_BINARY), address], cwd=BUILD_DIR, env=env)
     channel = grpc.insecure_channel(address)
     grpc.channel_ready_future(channel).result(timeout=15)
     try:
@@ -118,7 +143,7 @@ def test_submit_order_replay_returns_already_exists():
     address = "127.0.0.1:50073"
     with running_server(address):
         client = TraderClient(server_address=address)
-        nonce = b"0011223344556677"
+        nonce = secrets.token_bytes(16)
         first = client.submit_order("trader-replay", 100, 10, "BUY", nonce=nonce)
         assert first.success is True
 
@@ -126,6 +151,24 @@ def test_submit_order_replay_returns_already_exists():
             client.submit_order("trader-replay", 100, 10, "BUY", nonce=nonce)
 
         assert excinfo.value.code() == grpc.StatusCode.ALREADY_EXISTS
+
+
+def test_submit_order_replay_persists_across_restart():
+    address = "127.0.0.1:50073"
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = pathlib.Path(tmp) / "nonce_store.sqlite"
+        nonce = b"2011223344556677"
+
+        with running_server_with_nonce_db(db_path, address):
+            client = TraderClient(server_address=address)
+            first = client.submit_order("trader-replay", 100, 10, "BUY", nonce=nonce)
+            assert first.success is True
+
+        with running_server_with_nonce_db(db_path, address):
+            client = TraderClient(server_address=address)
+            with pytest.raises(grpc.RpcError) as excinfo:
+                client.submit_order("trader-replay", 100, 10, "BUY", nonce=nonce)
+            assert excinfo.value.code() == grpc.StatusCode.ALREADY_EXISTS
 
 
 def test_submit_order_internal_error_propagates():

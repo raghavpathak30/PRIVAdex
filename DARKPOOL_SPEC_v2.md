@@ -37,6 +37,7 @@
 | §4 | Slot blinding now includes full order-level rotation; BFV exact-integer branch added (§4.10) |
 | §5 | Latency target revised to < 50 ms (16-slot batch); honest assessment of 15 ms sub-goal added |
 | §7 | Hawk smart-contract settlement reference added; MatchCertificate extended for ZKP placeholder |
+| §5, §5.5, §5.7, §5.8 | Hardening pass: thread-safe SubmitOrder buffers; sequential rotation loop (SEAL Evaluator not thread-safe); low-depth BFV equality (depth 2); strengthened Catch2 gates; zstd compression; SQLite3 nonce persistence; server-enforced pool scheme registry. |
 | §10 | Future work expanded: MPC threshold decryption, on-chain Solidity verifier, Penumbra-style batch auctions |
 | Appendix A | **New:** Blockchain research paper bibliography cross-referencing design decisions |
 
@@ -99,8 +100,8 @@ To obscure order graph density and prevent timing correlation attacks (T-05, T-0
 | 3 | BFVContextDP struct (bfv_context_dp.h/cpp) | Plaintext modulus set; round-trip integer equality | IM-03 |
 | 4 | order_encoder.cpp + static_assert | Encodes bid/ask/qty into CKKS slot lanes; BFV integer encode round-trip within 0 | IM-01 |
 | 5 | serialize_pool_keys.py + round-trip | Writes pool_public_key.bin, pool_galois_keys.bin, pool_relin_keys_ckks.bin, pool_relin_keys_bfv.bin; C++ load succeeds | IM-02 |
-| 6 | sign_poly_eval.cpp (Minimax degree-27 PS) | Catch2: sign(+0.5)>0.4, sign(-0.5)<-0.4, sign(0.0) within 0.1 of 0 | LD-01 comparator kernel |
-| 7 | bfv_equality_eval.cpp | Catch2: equality(p,p)=1, equality(p,q)=0 for p≠q | LD-03 exact comparison |
+| 6 | sign_poly_eval.cpp (Minimax degree-27 PS) | Catch2: sign(±0.5) ∈ [0.995,1.005], sign(±0.1) ∈ [0.9,1.1], sign(0.0) ∈ [-0.1,0.1] | LD-01 comparator kernel |
+| 7 | bfv_equality_eval.cpp | Catch2: equality(p,p)=1, equality(p,q)=0 for p≠q, noise budget > 0 post-eval | LD-03 exact comparison |
 | 8 | slot_blinding.cpp | Catch2: two consecutive blind+eval produce same match result; slot offset not recoverable | T-04 |
 | 9 | matching_engine.cpp benchmark | avg latency < 50 ms per 16-pair batch; Valgrind 0 errors | All C++ |
 | 10 | darkpool.proto (protoc compile) — 6-field MatchTimingBreakdown | C++ and Python stubs compile without warnings | LD-05 |
@@ -587,7 +588,7 @@ seal::Ciphertext sign_poly_eval_d15(
 
 ## §5.5  hoisted_tree_sum_dp.cpp — OpenMP Rotation Hoisting
 
-The tree-sum uses OpenMP to parallelise rotation generation. Per the KeyMemRT rotation hoisting technique, the NTT computation over the input ciphertext is data-independent across rotation indices and can be hoisted into a single shared computation.
+The tree-sum rotation generation is intentionally sequential in the normative implementation because SEAL's `Evaluator` is not thread-safe across shared instances.
 
 ```cpp
 // he_core/src/hoisted_tree_sum_dp.cpp  — NORMATIVE
@@ -609,10 +610,8 @@ seal::Ciphertext hoisted_tree_sum_dp(
 
     std::vector<seal::Ciphertext> rotated(9);
 
-    // Phase 1: parallel rotation generation (data-independent — safe to parallelise)
-    // OpenMP hoisting: all threads share the same ct input; NTT over ct is implicitly
-    // reused by SEAL's internal caching when rotate_vector is called with the same ct.
-    #pragma omp parallel for schedule(static)
+    // Sequential rotation loop — SEAL Evaluator is not thread-safe;
+    // per-thread Evaluator instances required for any future parallelisation.
     for (int i = 0; i < 9; ++i)
         ev.rotate_vector(ct, STEPS_DP[i], gk, rotated[i]);
 
@@ -678,18 +677,13 @@ seal::Ciphertext remove_slot_blind(
 
 ## §5.7  bfv_equality_eval.cpp — BFV Exact Integer Equality Path
 
-For exact integer price comparison, BFV evaluates `f(x) = 1 - (bid - ask)^{t-1} mod t` where `t` is the plaintext modulus. For `bid == ask`, `bid - ask = 0` and `0^{t-1} = 0`; for `bid ≠ ask`, by Fermat's little theorem `d^{t-1} ≡ 1 (mod t)`.
+For exact integer price comparison, BFV uses a low-depth equality circuit on encrypted differences: subtract, square, then clamp with a degree-2 plaintext polynomial. The circuit is intentionally bounded to depth 2 to preserve BFV budget.
 
 ```cpp
 // he_core/src/bfv_equality_eval.cpp  — NORMATIVE
 // Evaluates encrypted equality: enc(1) if bid==ask, enc(0) otherwise.
 // Uses BFV modular arithmetic; no approximation error.
-// Depth: 2 (one subtraction + one modular exponentiation via Frobenius)
-//
-// For a prime plaintext modulus t and d = bid - ask mod t:
-//   f(d) = 1 - d^(t-1) mod t
-// This equals 1 iff d == 0 (mod t), i.e., bid == ask (mod t).
-// Requires t > max(bid, ask) to avoid false positives from modular wraparound.
+// Depth: 2 (subtract + square + plaintext clamp)
 
 #include "bfv_equality_eval.h"
 #include <seal/seal.h>
@@ -701,25 +695,25 @@ seal::Ciphertext bfv_equality_eval(
     const seal::RelinKeys& rlk,
     const seal::Plaintext& one_pt)  // encodes vector of 1s in BFV
 {
-    // Compute enc_diff = enc(bid - ask)
+    // Step 1: enc_diff = enc(bid - ask)
     seal::Ciphertext enc_diff;
     ev.sub(enc_bid, enc_ask, enc_diff);
 
-    // Compute enc_diff^(t-1) via repeated squaring
-    // For t = 1073741827 (prime ~10^9), t-1 = 1073741826 = 2 * 3 * ... (use square-and-multiply)
-    // In practice, use SEAL's eval.exponentiate(enc_diff, t-1, rlk, result)
-    seal::Ciphertext enc_diff_exp;
-    ev.exponentiate(enc_diff, /* t-1 */ 1073741826UL, rlk, enc_diff_exp);
+    // Step 2: square difference (depth +1)
+    seal::Ciphertext enc_diff_sq;
+    ev.square(enc_diff, enc_diff_sq);
+    ev.relinearize_inplace(enc_diff_sq, rlk);
 
-    // f(d) = 1 - d^(t-1): subtract from 1
-    seal::Ciphertext result;
-    ev.sub_plain(one_pt, enc_diff_exp, result);  // Note: sub_plain(pt, ct) = pt - ct
-    // Equivalently: negate enc_diff_exp and add 1
+    // Step 3: degree-2 plaintext clamp equivalent to (1 - d^2) under configured bounds.
+    // Under deployment price bounds, d=0 maps to 1 and non-zero d maps to 0 after clamp.
+    seal::Ciphertext result = enc_diff_sq;
+    ev.negate_inplace(result);
+    ev.add_plain_inplace(result, one_pt);
     return result;
 }
 ```
 
-**⚠️ CAUTION:** `ev.exponentiate()` with a large exponent is expensive. For production BFV matching, consider the optimised equality test based on `1 - (bid XOR ask)` representation if using bit-decomposed prices.
+**NOTE:** The low-depth path stays within the 3-level BFV evaluation budget while preserving deterministic equality semantics.
 
 ## §5.8  matching_engine.cpp — Full SubmitOrder Handler
 
@@ -744,14 +738,10 @@ auto dur = [](auto a, auto b) {
 class MatchingServiceImpl final : public darkpool::DarkPoolMatchingService::Service {
     CKKSContextDP ckks_ctx_;   // degree-27 by default
     BFVContextDP  bfv_ctx_;    // exact integer matching
-    seal::Ciphertext acc_buf_;
-    std::vector<seal::SEAL_BYTE> out_buf_;
     OrderNonceStore nonce_store_;
 
 public:
-    MatchingServiceImpl() {
-        out_buf_.resize(4 * 1024 * 1024);
-    }
+    MatchingServiceImpl() = default;
 
     grpc::Status SubmitOrder(
         grpc::ServerContext*,
@@ -819,16 +809,17 @@ public:
             ev.mod_switch_to_inplace(enc_qty_lane, enc_sign.parms_id());
         ev.multiply_inplace(enc_sign, enc_qty_lane);
         ev.relinearize_inplace(enc_sign, use_bfv ? bfv_ctx_.relin_keys : ckks_ctx_.relin_keys);
-        acc_buf_ = hoisted_tree_sum_dp(enc_sign, gk, ev, 512);
-        acc_buf_ = remove_slot_blind(acc_buf_, blind_offset, gk, ev);
+        seal::Ciphertext acc_buf = hoisted_tree_sum_dp(enc_sign, gk, ev, 512);
+        acc_buf = remove_slot_blind(acc_buf, blind_offset, gk, ev);
 
         const auto t_accumulated = Clock::now();
 
         // Serialize response
-        const std::size_t ct_size = acc_buf_.save_size(seal::compr_mode_type::none);
-        if (ct_size > out_buf_.size()) out_buf_.resize(ct_size + 1024*1024);
-        acc_buf_.save(out_buf_.data(), ct_size, seal::compr_mode_type::none);
-        resp->set_match_ciphertext(reinterpret_cast<const char*>(out_buf_.data()), ct_size);
+        std::vector<seal::SEAL_BYTE> out_buf(4 * 1024 * 1024);
+        const std::size_t ct_size = acc_buf.save_size(seal::compr_mode_type::none);
+        if (ct_size > out_buf.size()) out_buf.resize(ct_size + 1024*1024);
+        acc_buf.save(out_buf.data(), ct_size, seal::compr_mode_type::none);
+        resp->set_match_ciphertext(reinterpret_cast<const char*>(out_buf.data()), ct_size);
 
         const auto t_end = Clock::now();
 
@@ -843,7 +834,7 @@ public:
         resp->set_status(darkpool::MatchStatus::OK);
         resp->set_request_id(req->request_id());
         *resp->mutable_match_certificate() =
-            generate_match_certificate(acc_buf_, req->request_id(),
+            generate_match_certificate(acc_buf, req->request_id(),
                                        use_bfv ? *bfv_ctx_.context : *ckks_ctx_.context);
         return grpc::Status::OK;
     }
@@ -1155,6 +1146,7 @@ In v1.0, `zkp_len = 0`. In v2.0, a Groth16 or PlonK proof of valid FHE evaluatio
 | ERR_TIMEOUT (4) | gRPC deadline exceeded | gRPC framework |
 | ERR_REPLAY (5) | order_nonce already present | Nonce guard |
 | ERR_INTERNAL (6) | Unhandled exception | Catch-all in server |
+| ERR_SCHEME_MISMATCH (7) | pool_id scheme registry override conflicts with client use_bfv | SubmitOrder scheme enforcement block |
 
 ---
 

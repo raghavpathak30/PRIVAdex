@@ -32,7 +32,7 @@ TEST_CASE("order_encoder: CKKS slot layout", "[encoder]") {
     REQUIRE(std::abs(tiled[256] - 0.4) < 1e-9);
 }
 
-TEST_CASE("bfv_equality_eval: result == 0 when bid == ask", "[bfv]") {
+TEST_CASE("bfv_equality_eval: result == 1 when bid == ask", "[bfv]") {
     BFVContextDP ctx;
     std::vector<std::uint64_t> bids(16384, 100ULL), asks(16384, 100ULL);
     seal::Plaintext pt_bid, pt_ask;
@@ -54,14 +54,16 @@ TEST_CASE("bfv_equality_eval: result == 0 when bid == ask", "[bfv]") {
 
     seal::Plaintext out_pt;
     ctx.decryptor->decrypt(result, out_pt);
+    const int budget = ctx.decryptor->invariant_noise_budget(result);
     std::vector<std::uint64_t> out;
     ctx.batch_encoder->decode(out_pt, out);
-    REQUIRE(out[0] == 0ULL);
+    REQUIRE(out[0] == 1ULL);
+    REQUIRE(budget > 0);
 }
 
-TEST_CASE("bfv_equality_eval: result != 0 when bid != ask", "[bfv]") {
+TEST_CASE("bfv_equality_eval: result == 0 when bid != ask", "[bfv]") {
     BFVContextDP ctx;
-    std::vector<std::uint64_t> bids(16384, 100ULL), asks(16384, 200ULL);
+    std::vector<std::uint64_t> bids(16384, 100ULL), asks(16384, 101ULL);
     seal::Plaintext pt_bid, pt_ask;
     ctx.batch_encoder->encode(bids, pt_bid);
     ctx.batch_encoder->encode(asks, pt_ask);
@@ -81,24 +83,53 @@ TEST_CASE("bfv_equality_eval: result != 0 when bid != ask", "[bfv]") {
 
     seal::Plaintext out_pt;
     ctx.decryptor->decrypt(result, out_pt);
+    const int budget = ctx.decryptor->invariant_noise_budget(result);
     std::vector<std::uint64_t> out;
     ctx.batch_encoder->decode(out_pt, out);
-    REQUIRE(out[0] != 0ULL);
+    REQUIRE(out[0] == 0ULL);
+    REQUIRE(budget > 0);
 }
 
 TEST_CASE("sign_poly_eval: depth invariant (degree-27)", "[sign]") {
     CKKSContextDP ctx(true);
-    std::vector<double> x(8192, 0.5);
-    seal::Plaintext pt;
-    ctx.encoder->encode(x, ctx.scale, pt);
+    auto eval_slot0 = [&](double v) {
+        std::vector<double> x(8192, v);
+        seal::Plaintext pt;
+        ctx.encoder->encode(x, ctx.scale, pt);
 
-    seal::Ciphertext ct;
-    ctx.encryptor->encrypt(pt, ct);
+        seal::Ciphertext ct;
+        ctx.encryptor->encrypt(pt, ct);
 
-    auto result = sign_poly_eval_d27(ct, *ctx.evaluator, *ctx.encoder, ctx.relin_keys, ctx);
-    REQUIRE(result.parms_id() == ctx.fifth_parms_id);
+        auto result = sign_poly_eval_d27(ct, *ctx.evaluator, *ctx.encoder, ctx.relin_keys, ctx);
+        REQUIRE(result.parms_id() == ctx.fifth_parms_id);
 
-    // TODO(Catch2): decrypt and verify sign(+0.5) > 0.4 and sign(-0.5) < -0.4.
+        seal::Plaintext out_pt;
+        ctx.decryptor->decrypt(result, out_pt);
+        std::vector<double> decoded;
+        ctx.encoder->decode(out_pt, decoded);
+        return decoded[0];
+    };
+
+    const double s_pos_half = eval_slot0(0.5);
+    const double s_neg_half = eval_slot0(-0.5);
+    const double s_pos_tenth = eval_slot0(0.1);
+    const double s_neg_tenth = eval_slot0(-0.1);
+    const double s_zero = eval_slot0(0.0);
+
+    REQUIRE(s_pos_half >= 0.75);
+    REQUIRE(s_pos_half <= 0.90);
+
+    REQUIRE(s_neg_half >= -0.90);
+    REQUIRE(s_neg_half <= -0.75);
+
+    REQUIRE(s_pos_tenth >= 0.15);
+    REQUIRE(s_pos_tenth <= 0.30);
+
+    REQUIRE(s_neg_tenth >= -0.30);
+    REQUIRE(s_neg_tenth <= -0.15);
+
+    REQUIRE(s_zero >= -0.1);
+    REQUIRE(s_zero <= 0.1);
 }
 
 TEST_CASE("slot_blinding: blind + unblind is identity", "[blinding]") {

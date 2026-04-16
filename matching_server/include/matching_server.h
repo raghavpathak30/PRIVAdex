@@ -4,6 +4,8 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <mutex>
 
 #include "bfv_context_dp.h"
 #include "ckks_context_dp.h"
@@ -47,10 +49,13 @@ public:
 private:
     grpc::Status HandleMatch(
         const darkpool::MatchRequest* request,
-        darkpool::MatchResponse* response);
+        darkpool::MatchResponse* response,
+        bool use_bfv);
 
     CKKSContextDP ckks_ctx_;
     BFVContextDP bfv_ctx_;
+    std::unordered_map<std::string, bool> pool_scheme_registry_;
+    mutable std::mutex eval_mutex_;
 };
 
 std::unique_ptr<grpc::Server> BuildMatchingServer(const std::string& address);

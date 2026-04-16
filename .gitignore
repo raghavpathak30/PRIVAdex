@@ -5,6 +5,9 @@ __pycache__/
 *.pyd
 *.egg-info/
 .env
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 
 # Keep local-only settlement credentials out of git if populated
 settlement_config.json

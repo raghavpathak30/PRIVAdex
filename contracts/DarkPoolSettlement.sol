@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/*
+PrivaDEX DarkPool Settlement Contract (v1.0 stub)
+
+- This contract is intentionally a v1.0 settlement stub for off-chain SEAL matching outputs.
+- v2.0 fhEVM migration target: replace plaintext equality/match checks with encrypted operations
+    using fhEVM primitives (e.g., TFHE.eq()) and encrypted input types.
+- Public settlement surface is kept stable to allow a drop-in migration of matching semantics.
+*/
+
 contract DarkPoolSettlement {
     struct Settlement {
         uint256 price;

@@ -5,6 +5,17 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(ENABLE_TSAN "Build with ThreadSanitizer" OFF)
+
+if(ENABLE_TSAN)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        add_compile_options(-fsanitize=thread -fno-omit-frame-pointer -g)
+        add_link_options(-fsanitize=thread)
+    else()
+        message(FATAL_ERROR "ENABLE_TSAN is only supported with GCC/Clang")
+    endif()
+endif()
+
 enable_testing()
 
 find_package(SEAL 4.1 REQUIRED)
@@ -160,6 +171,20 @@ target_link_libraries(matching_server_test
 )
 
 add_test(NAME matching_server_integration COMMAND matching_server_test)
+
+add_executable(matching_server_concurrent_test matching_server/src/concurrent_submit_test.cpp)
+target_include_directories(matching_server_concurrent_test
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/matching_server/include
+        ${CMAKE_SOURCE_DIR}/he_core/include
+        ${GENERATED_PROTO_DIR}
+)
+target_link_libraries(matching_server_concurrent_test
+    PRIVATE
+        darkpool_server_core
+)
+add_test(NAME concurrent_submit COMMAND matching_server_concurrent_test)
+
 add_test(NAME submit_order_pytest COMMAND ${Python3_EXECUTABLE} -m pytest -q ${CMAKE_SOURCE_DIR}/trader_client/test_submit_order.py)
 set_tests_properties(submit_order_pytest PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 add_test(NAME settle_bridge_pytest COMMAND ${Python3_EXECUTABLE} -m pytest -q ${CMAKE_SOURCE_DIR}/trader_client/test_settle_bridge.py)

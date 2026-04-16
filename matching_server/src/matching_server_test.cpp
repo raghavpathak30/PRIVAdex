@@ -50,7 +50,7 @@ int main() {
         return ct;
     };
 
-    auto run_case = [&](std::uint64_t buy, std::uint64_t sell, bool expect_zero) {
+    auto run_case = [&](std::uint64_t buy, std::uint64_t sell, bool expect_one) {
         auto buy_ct = make_ct(buy);
         auto sell_ct = make_ct(sell);
 
@@ -77,8 +77,8 @@ int main() {
         std::vector<std::uint64_t> decoded;
         bfv.batch_encoder->decode(out_pt, decoded);
 
-        const bool is_zero = (decoded[0] == 0ULL);
-        return expect_zero ? is_zero : !is_zero;
+        const bool is_one = (decoded[0] == 1ULL);
+        return expect_one ? is_one : !is_one;
     };
 
     const bool equal_ok = run_case(100ULL, 100ULL, true);

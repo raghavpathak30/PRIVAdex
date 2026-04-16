@@ -1,51 +1,87 @@
 # Architecture
 
-## CKKSContextDP / BFVContextDP
+This document summarizes the end-to-end architecture of the PrivaDEX DarkPool FHE matching engine, aligned with the normative spec in `DARKPOOL_SPEC_v2.md`.
 
-`CKKSContextDP` and `BFVContextDP` are the SEAL context wrappers that define the cryptographic parameters for the two execution paths. CKKS is used for approximate arithmetic on real-valued prices and quantities, while BFV is used for exact integer matching. The contexts own the SEAL objects needed by the rest of the pipeline, including the encoder, encryptor, decryptor, evaluator, relinearization keys, and Galois keys, so the higher layers do not need to re-create cryptographic state per request.
+## System Components
 
-## SignPolyEval (degree-27 Minimax PS)
+- `he_core/`: SEAL context wrappers and core encrypted kernels.
+- `matching_server/`: gRPC matching service and replay-protected order handler.
+- `trader_client/`: Python submission/decryption/bridge pipeline.
+- `contracts/`: settlement contract stub (v1.0) with fhEVM migration notes.
 
-`sign_poly_eval_d27` is the CKKS-side sign approximation kernel. It evaluates a degree-27 minimax polynomial over a ciphertext difference so that the engine can derive a match decision from an encrypted price delta without decrypting intermediate values. In this project it is the higher-depth CKKS path and is used when the order values are floating-point or otherwise routed through approximate arithmetic.
+## Hybrid Scheme Design
 
-## BFVEqualityEval
+- BFV path: exact integer equality for price matching, deterministic semantics (`equal => 1`, `unequal => 0`).
+- CKKS path: approximate arithmetic for continuous-value computations.
+- Both use `n=16384`; key material and kernel paths are scheme-dispatched by server policy.
 
-`bfv_equality_eval` is the exact integer comparison kernel. It evaluates whether two integer-encoded slots are equal and returns a ciphertext whose decoded value reflects the equality result. In the current server implementation this is the kernel used for the replay-guarded matching path, because it is stable, exact, and easier to validate in tests than the approximate path.
+## Data Lifecycle Trace (17 Hops)
 
-## SlotBlinding
+Aligned with spec Section 3:
 
-`SlotBlinding` provides ciphertext rotation-based blinding and unblinding helpers. Its purpose is to make the slot pattern less obvious while preserving the post-processing semantics of the matching result. The implementation is intentionally conservative: it uses offsets backed by the available Galois keys and falls back safely if a rotation key is unavailable.
+1. Trader -> TraderClient: submit bid/ask/qty.
+2. TraderClient feature pack: flatten to contiguous vector.
+3. TraderClient -> Pybind11 wrapper: zero-copy buffer handoff.
+4. Encrypt order: BFV or CKKS ciphertext creation.
+5. Serialize ciphertext to bytes.
+6. Transport over gRPC request.
+7. Server deserializes into SEAL ciphertext.
+8. Slot blinding rotation applied server-side.
+9. Difference/equality pre-kernel lane prep.
+10. Kernel eval: CKKS sign polynomial or BFV equality eval.
+11. Accumulation and hoisted tree-sum reduction.
+12. Unblind result slots.
+13. Serialize response ciphertext.
+14. gRPC response transport back to client.
+15. TraderClient decrypts result.
+16. Threshold/extract match outcome.
+17. Settlement bridge posts settlement to contract.
 
-## MatchingServer
+## Slot Layout (Stride-512, 16 Orders)
 
-`MatchingServer` is the gRPC service boundary. It exposes `ExecuteMatch` for the existing matching benchmark path and `SubmitOrder` for the replay-protected order flow. The service deserializes ciphertext payloads, dispatches the appropriate CKKS or BFV kernel, serializes the result back into protobuf bytes, and returns a status code that can be checked by the caller.
+For each order index `k` in `[0..15]`:
 
-## NonceStore (native SQLite replay guard)
+- bid lane: `slot[k*512 + 0]`
+- qty lane: `slot[k*512 + 1]`
+- ask lane: `slot[k*512 + 256]`
 
-`NonceStore` is the server-side replay guard implemented with native SQLite. It stores nonces in a `nonce BLOB PRIMARY KEY, trader_id TEXT, timestamp INTEGER` table and rejects duplicates so that a replayed order does not get processed twice. The guard is intentionally simple and local: it protects against duplicate submissions at the server boundary, but it is not a global consensus mechanism.
+Match output after reduction is read from:
 
-## TraderClient
+- result lane: `slot[k*512]`
 
-`TraderClient` is the Python entry point for order submission. It validates the contract fields, chooses the encryption scheme, packs the order into the SEAL wrapper layout, encrypts the order, generates or accepts a nonce, and sends a gRPC `SubmitOrder` request. The client also exposes a typed `SubmitOrderResult` dataclass so the rest of the Python workflow can tell the difference between success, match absence, and transport/server failures.
+This fixed geometry is shared across encoding, blinding, and extraction logic.
 
-## SettleBridge
+## Key Distribution Audit
 
-`settle_bridge.py` is the post-match Python bridge. It takes a `SubmitOrderResult`, decrypts BFV results through the Pybind11 wrapper, extracts the matched price and quantity, and calls `settle_on_chain()` when a match exists. The bridge is designed to propagate errors explicitly through `SettlementError` with a stage label so callers can tell whether the failure happened during decryption, encoding, transaction submission, or transaction revert handling.
+- Secret keys (CKKS/BFV): trader client only; never present on matching server.
+- Public keys: trader client + matching server.
+- Relinearization keys: matching server.
+- Galois keys: matching server.
 
-## DarkPoolSettlement.sol
+Operational rule: engine-side deployment with secret key is out of policy.
 
-`DarkPoolSettlement.sol` is the on-chain settlement stub. It stores settlement records, emits an `OrderSettled` event, and restricts `settle()` to an authorized settler address. The contract is intentionally simple and stable so it can survive a later fhEVM migration: the current public shape can remain while the internal representation of the order payload moves from plaintext integers to encrypted `euint256` inputs and `TFHE` operations.
+## MatchTimingBreakdown (6 Fields)
 
-## Data Flow
+The matching RPC reports six timing fields:
 
-A trader submits price, quantity, side, and trader identity to `TraderClient`. The client validates the fields, generates or accepts a 16-byte nonce, encrypts the order with the chosen scheme, and sends a gRPC `SubmitOrder` request to `MatchingServer`. The server checks the nonce against the SQLite replay store and rejects duplicates with `ALREADY_EXISTS` before doing any matching work.
+- `deserialization_us`
+- `slot_blind_us`
+- `sign_poly_us`
+- `accumulate_us`
+- `serialization_us`
+- `total_match_us`
 
-If the nonce is new, the server deserializes the ciphertexts, runs BFV equality evaluation for the current matching path, applies slot blinding, serializes the result, and returns it in the response. The client receives the response, decrypts it if needed through the Pybind11 wrapper, and creates a `SubmitOrderResult`. If `match_found` is true, `settle_bridge.py` decrypts the BFV result, extracts price and quantity, and calls `settle_on_chain()`, which submits the settlement transaction to `DarkPoolSettlement.sol`. The contract records the settlement and emits `OrderSettled`.
+Invariant:
 
-## Security Properties
+`deserialization_us + slot_blind_us + sign_poly_us + accumulate_us + serialization_us ~= total_match_us`
 
-The design protects order price and quantity during the matching step because the engine only sees ciphertexts. It does not hide trader identity end-to-end, because the trader ID, request metadata, timing, and settlement call all remain visible to the server, the client logs, and the on-chain settlement layer. Replay protection only covers duplicate nonce submissions at the server boundary; it does not prevent an attacker from learning that a request was attempted, and it does not provide global cross-server deduplication.
+Small residual overhead comes from control-path work (nonce checks and bookkeeping).
 
-## Known Limitations and Future Work
+## Replay Protection and Policy Enforcement
 
-The main limitation is that SEAL does not execute on-chain, so the confidentiality guarantee depends on an off-chain matching service. fhEVM removes that trust gap by moving the arithmetic into encrypted Solidity using types such as `euint256` and functions such as `TFHE.eq()` and `TFHE.decrypt()`. The current system also matches single order pairs rather than a true batch auction; extending it to a production dark pool would require a richer auction mechanism, stronger fairness properties, and more explicit settlement policy.
+- Replay gate: nonce persistence in SQLite3 across process restarts.
+- Scheme policy: server enforces pool-level scheme registry by `pool_id` and overrides conflicting client flags.
+
+## On-Chain Settlement Boundary
+
+Settlement is intentionally a v1.0 stub contract boundary in this repo. Current on-chain surface is plain Solidity settlement records/events; encrypted on-chain matching is a planned fhEVM migration path.
