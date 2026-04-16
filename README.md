@@ -85,3 +85,9 @@ For the full 17-hop encrypted data lifecycle, slot layout, key custody model, an
 - [benchmarks](benchmarks): latency benchmark tooling
 - [contracts](contracts): settlement contract stub and deployment helper
 - [evidence](evidence): benchmark/analysis artifacts for review
+
+## fhEVM Port
+
+Phase A introduces [contracts/PrivaDEXDarkPool.fhEVM.sol](contracts/PrivaDEXDarkPool.fhEVM.sol), an on-chain fhEVM translation of the SEAL BFV equality matching path. It ports the core match primitive from BFV equality evaluation to `TFHE.eq()` and computes encrypted match quantity with `TFHE.select()`, while preserving authorized-settler execution control for match finalization.
+
+Current encrypted order fields are typed as `euint32`. This implies bid/ask/qty domains must fit within `uint32` bounds; if pool tick or quantity ranges exceed this, the contract should migrate to wider encrypted integer types in a follow-up phase.

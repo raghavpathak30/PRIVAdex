@@ -1,0 +1,16 @@
+{
+  "name": "privadex-darkpool-fhevm",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "compile:fhevm": "hardhat compile"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.8",
+    "hardhat": "^2.22.16"
+  },
+  "dependencies": {
+    "fhevm": "^0.5.9"
+  }
+}
