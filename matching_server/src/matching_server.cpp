@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
+#include <iostream>
 #include <mutex>
 #include <random>
 #include <regex>
@@ -102,6 +103,10 @@ SqliteNonceStore& NonceStore() {
 
 bool ReserveNonce(const std::string& trader_id, const std::string& nonce_bytes) {
     return NonceStore().InsertNonce(nonce_bytes, trader_id);
+}
+
+bool IsDummyRequest(const std::string& request_id) {
+    return request_id.rfind("dummy:", 0) == 0;
 }
 
 std::unordered_map<std::string, bool> BuildDefaultPoolRegistry() {
@@ -301,6 +306,21 @@ grpc::Status MatchingServiceImpl::SubmitOrder(
         if (!ReserveNonce(request->trader_id(), request->nonce())) {
             return grpc::Status(grpc::StatusCode::ALREADY_EXISTS, "replay detected");
         }
+
+        const bool is_dummy = IsDummyRequest(request->request_id());
+        std::cout << "[submit_order_received] request_id=" << request->request_id()
+                  << " trader_id=" << request->trader_id()
+                  << " dummy=" << (is_dummy ? 1 : 0) << std::endl;
+
+        if (is_dummy) {
+            response->set_request_id(request->request_id());
+            response->set_is_error(false);
+            response->set_error_message("");
+            response->set_match_certificate("");
+            response->set_result_ciphertext("");
+            return grpc::Status::OK;
+        }
+
         return HandleMatch(request, response, pool_it->second);
     } catch (const std::exception& ex) {
         return grpc::Status(grpc::StatusCode::INTERNAL, ex.what());

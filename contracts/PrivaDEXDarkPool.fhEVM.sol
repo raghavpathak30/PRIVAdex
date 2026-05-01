@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.26;
 
-import "fhevm/lib/TFHE.sol";
+import "@fhevm/solidity/lib/FHE.sol";
+import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 
-contract PrivaDEXDarkPoolFHEVM {
+contract PrivaDEXDarkPoolFHEVM is ZamaEthereumConfig {
     struct Order {
         euint32 bid;
         euint32 ask;
@@ -32,16 +33,16 @@ contract PrivaDEXDarkPoolFHEVM {
         settler = newSettler;
     }
 
-    // Encrypted order submission path: ciphertext handles are converted with TFHE.asEuint32().
+    // Encrypted order submission path using external encrypted handles.
     function submitOrder(
-        einput bidInput,
-        einput askInput,
-        einput qtyInput,
+        externalEuint32 bidInput,
+        externalEuint32 askInput,
+        externalEuint32 qtyInput,
         bytes calldata inputProof
     ) external returns (uint256 orderId) {
-        euint32 bid = TFHE.asEuint32(bidInput, inputProof);
-        euint32 ask = TFHE.asEuint32(askInput, inputProof);
-        euint32 qty = TFHE.asEuint32(qtyInput, inputProof);
+        euint32 bid = FHE.fromExternal(bidInput, inputProof);
+        euint32 ask = FHE.fromExternal(askInput, inputProof);
+        euint32 qty = FHE.fromExternal(qtyInput, inputProof);
 
         orderId = orders.length;
         orders.push(Order({bid: bid, ask: ask, qty: qty, trader: msg.sender}));
@@ -49,7 +50,7 @@ contract PrivaDEXDarkPoolFHEVM {
     }
 
     // BFV equality translation target:
-    // matched = (orderA.bid == orderB.ask) via TFHE.eq().
+    // matched = (orderA.bid == orderB.ask) via FHE.eq().
     function matchOrders(
         uint256 orderAId,
         uint256 orderBId,
@@ -62,8 +63,8 @@ contract PrivaDEXDarkPoolFHEVM {
         Order storage orderA = orders[orderAId];
         Order storage orderB = orders[orderBId];
 
-        ebool matched = TFHE.eq(orderA.bid, orderB.ask);
-        euint32 match_qty = TFHE.select(matched, orderA.qty, TFHE.asEuint32(0));
+        ebool matched = FHE.eq(orderA.bid, orderB.ask);
+        euint32 match_qty = FHE.select(matched, orderA.qty, FHE.asEuint32(0));
 
         settledRequestIds[request_id] = true;
         emit MatchExecuted(request_id, match_qty);

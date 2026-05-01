@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import secrets
+import threading
+import time
 from numbers import Integral
 from typing import Sequence
 
@@ -23,6 +25,7 @@ STRIDE = 512
 ASK_OFFSET = 256
 CKKS_TOTAL_SLOTS = 8192
 BFV_TOTAL_SLOTS = 16384
+DUMMY_REQUEST_PREFIX = "dummy"
 
 
 @dataclass
@@ -44,6 +47,69 @@ class SubmitOrderResult:
     side: str | None = None
     nonce: bytes | None = None
     use_bfv: bool | None = None
+    is_dummy: bool = False
+
+
+class DummyManager:
+    def __init__(
+        self,
+        client: "TraderClient",
+        trader_id: str,
+        cadence_ms: int = 5000,
+        timeout_seconds: float | None = 5.0,
+    ) -> None:
+        if cadence_ms <= 0:
+            raise ValueError("cadence_ms must be > 0")
+        if not isinstance(trader_id, str) or not trader_id.strip():
+            raise ValueError("trader_id must be a non-empty string")
+
+        self._client = client
+        self._trader_id = trader_id
+        self._cadence_seconds = cadence_ms / 1000.0
+        self._timeout_seconds = timeout_seconds
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._lock = threading.Lock()
+        self._sent = 0
+        self._last_error: Exception | None = None
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._run_loop, name="dummy-cadence", daemon=True)
+        self._thread.start()
+
+    def stop(self, join_timeout_seconds: float = 2.0) -> None:
+        self._stop_event.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=join_timeout_seconds)
+
+    @property
+    def sent_count(self) -> int:
+        with self._lock:
+            return self._sent
+
+    @property
+    def last_error(self) -> Exception | None:
+        with self._lock:
+            return self._last_error
+
+    def _run_loop(self) -> None:
+        # Wait for cadence interval before each heartbeat to produce deterministic
+        # cadence counts (duration / cadence).
+        while not self._stop_event.wait(self._cadence_seconds):
+            try:
+                result = self._client.submit_dummy_order(
+                    trader_id=self._trader_id,
+                    timeout_seconds=self._timeout_seconds,
+                )
+                if result.success:
+                    with self._lock:
+                        self._sent += 1
+            except Exception as exc:
+                with self._lock:
+                    self._last_error = exc
 
 
 class TraderClient:
@@ -168,11 +234,65 @@ class TraderClient:
         nonce: bytes | None = None,
         timeout_seconds: float | None = None,
     ) -> SubmitOrderResult:
+        return self._submit_order_internal(
+            trader_id=trader_id,
+            price=price,
+            quantity=quantity,
+            side=side,
+            nonce=nonce,
+            timeout_seconds=timeout_seconds,
+            allow_zero=False,
+            is_dummy=False,
+        )
+
+    def submit_dummy_order(
+        self,
+        trader_id: str,
+        side: str | None = None,
+        nonce: bytes | None = None,
+        timeout_seconds: float | None = None,
+    ) -> SubmitOrderResult:
+        if side is None:
+            side = "BUY" if (time.time_ns() & 1) == 0 else "SELL"
+        return self._submit_order_internal(
+            trader_id=trader_id,
+            price=0,
+            quantity=0,
+            side=side,
+            nonce=nonce,
+            timeout_seconds=timeout_seconds,
+            allow_zero=True,
+            is_dummy=True,
+        )
+
+    def _submit_order_internal(
+        self,
+        trader_id: str,
+        price: int,
+        quantity: int,
+        side: str,
+        nonce: bytes | None,
+        timeout_seconds: float | None,
+        allow_zero: bool,
+        is_dummy: bool,
+    ) -> SubmitOrderResult:
         auto_nonce = nonce is None
         if nonce is None:
             nonce = secrets.token_bytes(16)
 
-        self._validate_submit_order(trader_id, price, quantity, side, bytes(nonce))
+        if allow_zero:
+            if not isinstance(trader_id, str) or not trader_id.strip():
+                raise ValueError("trader_id must be a non-empty string")
+            if not isinstance(price, Integral) or isinstance(price, bool) or not (0 <= int(price) <= (1 << 20)):
+                raise ValueError("dummy price must be an int in [0, 2^20]")
+            if not isinstance(quantity, Integral) or isinstance(quantity, bool) or not (0 <= int(quantity) <= (1 << 20)):
+                raise ValueError("dummy quantity must be an int in [0, 2^20]")
+            if side not in {"BUY", "SELL"}:
+                raise ValueError('side must be "BUY" or "SELL"')
+            if not isinstance(nonce, (bytes, bytearray, memoryview)) or len(bytes(nonce)) != 16:
+                raise ValueError("nonce must be exactly 16 bytes")
+        else:
+            self._validate_submit_order(trader_id, price, quantity, side, bytes(nonce))
 
         if auto_nonce:
             while not self._nonce_store.insert_nonce(nonce, trader_id):
@@ -187,10 +307,11 @@ class TraderClient:
 
         buy_encrypted = self.encrypt_order(bids, asks, [int(quantity)])
         sell_encrypted = self.encrypt_order(bids, asks, [int(quantity)])
+        request_id_prefix = DUMMY_REQUEST_PREFIX if is_dummy else trader_id
         request = darkpool_pb2.MatchRequest(
             buy_order=buy_encrypted.ciphertext,
             sell_order=sell_encrypted.ciphertext,
-            request_id=f"{trader_id}:{bytes(nonce).hex()}",
+            request_id=f"{request_id_prefix}:{trader_id}:{bytes(nonce).hex()}",
             pool_id="default",
             order_nonce=int.from_bytes(bytes(nonce)[:8], "little", signed=False),
             use_bfv=buy_encrypted.use_bfv,
@@ -212,4 +333,5 @@ class TraderClient:
             side=side,
             nonce=bytes(nonce),
             use_bfv=buy_encrypted.use_bfv,
+            is_dummy=is_dummy,
         )

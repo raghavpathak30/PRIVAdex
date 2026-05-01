@@ -25,7 +25,28 @@ Source of truth used: DARKPOOL_SPEC_v2.md (Version 2.0).
 - [x] Step 13.a: Integrate SEAL serialization with gRPC byte-streams
 - [x] Step 14: TraderClient (submit_order contract)
 - [x] Step 15: Settlement bridge (settle_bridge.py + Solidity stub)
-- [x] Step 16: Research evidence collection
+- [x] Step 16: Dummy-order cadence privacy heartbeat + server-side dummy drop + cadence verifier
+
+## Recent Milestones (April 2026)
+
+- Dummy cadence privacy path completed end-to-end:
+	- `trader_client/trader_client.py`: `DummyManager` background heartbeat + `submit_dummy_order()` path.
+	- `matching_server/src/matching_server.cpp`: dummy request detection and silent drop after nonce reservation.
+	- `scripts/verify_cadence.py`: deterministic cadence verifier for expected vs observed dummy submissions.
+- Frontend demo UI upgraded for Builder Track pitch:
+	- New dashboard, benchmark, architecture, and settlement pages in `frontend/pages/`.
+	- Added shared top nav `frontend/components/Navbar.tsx` and global font/theming wiring in `frontend/pages/_app.tsx`.
+	- `recharts` integrated for benchmark visualizations.
+- On-chain settlement migrated to fhEVM v0.9 APIs:
+	- `contracts/DarkPoolSettlement.sol` now uses `@fhevm/solidity` imports (`FHE.sol`, `ZamaConfig.sol`) and `ZamaEthereumConfig` inheritance.
+	- Encrypted settlement input now uses `externalEuint64` with `FHE.fromExternal(...)`.
+	- Added anti-double-settlement guard with `FHE.isInitialized(...)`.
+	- Added `requestPublicDecryption(...)` for the v0.9 self-relaying decryption flow.
+	- Access control preserved for `authorizedSettler` and counterparties.
+- Deployment and dependency migration completed:
+	- Root dependency switched from `fhevm` to `@fhevm/solidity`.
+	- `hardhat.config.js` keeps `zamaDevnet` network (chainId 9000, `https://devnet.zama.ai`).
+	- `scripts/deploy_settlement_devnet.js` deploys with ethers v6 flow and prints Zama explorer verification note.
 
 ## Verification Notes
 
@@ -59,6 +80,8 @@ Source of truth used: DARKPOOL_SPEC_v2.md (Version 2.0).
 - Nonce store persisted to SQLite3 and survives restart; replay gate verified (`submit -> restart -> resubmit same nonce -> ERR_REPLAY`).
 - Pool scheme registry added: `use_bfv` is server-enforced per `pool_id` from `settlement_config.json`; client-supplied value is overridden.
 - Helgrind limitation: Helgrind aborts inside SEAL 4.1.1 `MemoryPoolMT` before a complete report (known Valgrind/SEAL compatibility issue), so TSAN remains the authoritative race-detection gate.
+- Frontend production build (`cd frontend && npm run build`) passes after redesign.
+- Solidity compile (`npm run compile`) passes after fhEVM v0.9 migration.
 
 ## Blocker Resolution (Post-Audit)
 

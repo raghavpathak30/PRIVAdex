@@ -84,4 +84,6 @@ Small residual overhead comes from control-path work (nonce checks and bookkeepi
 
 ## On-Chain Settlement Boundary
 
-Settlement is intentionally a v1.0 stub contract boundary in this repo. Current on-chain surface is plain Solidity settlement records/events; encrypted on-chain matching is a planned fhEVM migration path.
+Settlement uses fhEVM v0.9 encrypted on-chain state for match results.
+
+The trader client performs off-chain decryption via the @zama-fhe/relayer-sdk (publicDecrypt), then submits the cleartext and ZK proof on-chain for verification via FHE.checkSignatures(). This is the fhEVM v0.9 self-relaying model.

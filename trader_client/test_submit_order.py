@@ -7,6 +7,7 @@ import secrets
 import subprocess
 import sys
 import tempfile
+import time
 
 import grpc
 import pytest
@@ -18,7 +19,7 @@ SERVER_BINARY = BUILD_DIR / "matching_server"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from trader_client import OrderNonceStore, TraderClient
+from trader_client import DummyManager, OrderNonceStore, TraderClient
 from trader_client.proto_runtime import darkpool_pb2
 
 
@@ -184,3 +185,34 @@ def test_submit_order_internal_error_propagates():
 def test_nonce_store_expired_nonce_rejected():
     store = OrderNonceStore(expiry_seconds=300, now_fn=lambda: 1_000)
     assert store.insert_nonce(b"0123456789abcdef", "trader-expired", timestamp=600) is False
+
+
+def test_submit_dummy_order_uses_same_request_shape():
+    stub = FakeStub(response=darkpool_pb2.MatchResponse(is_error=False, result_ciphertext=b""))
+    client = TraderClient(stub=stub)
+
+    result = client.submit_dummy_order("trader-dummy", side="BUY", nonce=b"0011223344556677")
+
+    assert result.success is True
+    assert result.is_dummy is True
+    assert stub.requests
+    request, _ = stub.requests[0]
+    assert request.request_id.startswith("dummy:trader-dummy:")
+    assert request.trader_id == "trader-dummy"
+    assert request.nonce == b"0011223344556677"
+    assert request.buy_order
+    assert request.sell_order
+
+
+def test_dummy_manager_background_cadence():
+    stub = FakeStub(response=darkpool_pb2.MatchResponse(is_error=False, result_ciphertext=b""))
+    client = TraderClient(stub=stub)
+    manager = DummyManager(client=client, trader_id="trader-heartbeat", cadence_ms=100)
+
+    manager.start()
+    time.sleep(0.36)
+    manager.stop()
+
+    assert manager.last_error is None
+    # 360ms @ 100ms cadence should produce at least 2 heartbeats after startup jitter.
+    assert manager.sent_count >= 2
