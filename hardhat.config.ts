@@ -18,13 +18,22 @@ function getVar(name: string): string | undefined {
 }
 
 const ALCHEMY_KEY = getVar('ALCHEMY_API_KEY');
+const SEPOLIA_RPC_URL = getVar('SEPOLIA_RPC_URL');
 const PRIVATE_KEY = getVar('PRIVATE_KEY');
+
+// Determine Sepolia RPC: first try explicit SEPOLIA_RPC_URL, then Alchemy, finally default
+let sepoliaUrl = 'https://eth-sepolia.g.alchemy.com/v2/';
+if (SEPOLIA_RPC_URL) {
+  sepoliaUrl = SEPOLIA_RPC_URL;
+} else if (ALCHEMY_KEY) {
+  sepoliaUrl = `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`;
+}
 
 const config: HardhatUserConfig = {
   solidity: '0.8.26',
   networks: {
     sepolia: {
-      url: ALCHEMY_KEY ? `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}` : 'https://eth-sepolia.g.alchemy.com/v2/',
+      url: sepoliaUrl,
       accounts: PRIVATE_KEY ? [`0x${PRIVATE_KEY}`] : [],
     },
   },
