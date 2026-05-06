@@ -37,7 +37,7 @@ async function loadRelayerSdk() {
 }
 
 export function useDarkPool() {
-  const submitOrder = useCallback(async (price: bigint, qty: bigint, orderId: string) => {
+  const submitOrder = useCallback(async (price: bigint, qty: bigint, orderId: string, isBid: boolean = true) => {
     if (typeof window === 'undefined' || !(window as any).ethereum) {
       throw new Error('No injected wallet found (MetaMask required)');
     }
@@ -103,7 +103,7 @@ export function useDarkPool() {
       && submitOrderFn.inputs.length === 6;
 
     const tx = hasSeparatedProofSubmit
-      ? await contract.submitOrder(orderId, handles[0], handles[1], inputProof, inputProof, true)
+      ? await contract.submitOrder(orderId, handles[0], handles[1], inputProof, inputProof, isBid)
       : await contract.submitOrder(orderId, handles[0], handles[1], inputProof);
     await tx.wait();
     return tx;

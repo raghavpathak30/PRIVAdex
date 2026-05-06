@@ -35,6 +35,7 @@ export default function Home() {
   const [bidMatchId, setBidMatchId] = useState('');
   const [askMatchId, setAskMatchId] = useState('');
   const [decryptBidId, setDecryptBidId] = useState('');
+  const [orderType, setOrderType] = useState<'bid' | 'ask'>('bid');
   const { submitOrder, tryMatch, requestDecryption } = useDarkPool();
 
   const stories = useMemo(
@@ -99,9 +100,14 @@ export default function Home() {
         const price = BigInt(10);
         const qty = BigInt(100);
 
-        const tx = await submitOrder(price, qty, requestId);
+        const tx = await submitOrder(price, qty, requestId, orderType === 'bid');
         setRegisterTxHash(tx.hash ?? tx.transactionHash ?? '');
-        addLog('Order encrypted and submitOrder() confirmed on Sepolia', 'success');
+        addLog(`Order (${orderType.toUpperCase()}) encrypted and submitOrder() confirmed on Sepolia`, 'success');
+        if (orderType === 'bid') {
+          setBidMatchId(requestId);
+        } else {
+          setAskMatchId(requestId);
+        }
         addLog('Settlement step paused until the bridge supplies real encrypted handles', 'success');
       } catch (error) {
         console.error('Order submission error:', error);
@@ -205,14 +211,42 @@ export default function Home() {
                     Two traders, one private venue. This interaction now stops before the broken settlement call that was causing gas estimation to fail.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={walletConnected ? handlePrepareOrder : connectWallet}
-                  disabled={isSubmitting}
-                  className="shrink-0 rounded-full bg-[#111827] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#0F172A] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {walletConnected ? (isSubmitting ? 'Submitting...' : 'Register order') : 'Connect MetaMask'}
-                </button>
+                <div className="flex gap-3 items-center">
+                  {walletConnected && (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setOrderType('bid')}
+                        className={`px-4 py-2 rounded-full text-sm font-medium transition ${
+                          orderType === 'bid'
+                            ? 'bg-[#111827] text-white'
+                            : 'border border-[#D7CBB6] bg-white text-[#111827] hover:border-[#111827]'
+                        }`}
+                      >
+                        BID
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOrderType('ask')}
+                        className={`px-4 py-2 rounded-full text-sm font-medium transition ${
+                          orderType === 'ask'
+                            ? 'bg-[#111827] text-white'
+                            : 'border border-[#D7CBB6] bg-white text-[#111827] hover:border-[#111827]'
+                        }`}
+                      >
+                        ASK
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={walletConnected ? handlePrepareOrder : connectWallet}
+                    disabled={isSubmitting}
+                    className="shrink-0 rounded-full bg-[#111827] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#0F172A] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {walletConnected ? (isSubmitting ? 'Submitting...' : 'Register order') : 'Connect MetaMask'}
+                  </button>
+                </div>
               </div>
 
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
