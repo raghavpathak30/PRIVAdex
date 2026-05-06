@@ -26,3 +26,5 @@ export type { DarkPoolSettlement } from "./contracts/DarkPoolSettlement";
 export { DarkPoolSettlement__factory } from "./factories/contracts/DarkPoolSettlement__factory";
 export type { PrivaDEXDarkPoolFHEVM } from "./contracts/PrivaDEXDarkPool.fhEVM.sol/PrivaDEXDarkPoolFHEVM";
 export { PrivaDEXDarkPoolFHEVM__factory } from "./factories/contracts/PrivaDEXDarkPool.fhEVM.sol/PrivaDEXDarkPoolFHEVM__factory";
+export type { PrivaDEXMatcher } from "./contracts/PrivaDEXMatcher";
+export { PrivaDEXMatcher__factory } from "./factories/contracts/PrivaDEXMatcher__factory";

@@ -4,3 +4,4 @@
 export * as privaDexDarkPoolFhEvmSol from "./PrivaDEXDarkPool.fhEVM.sol";
 export { DarkPoolMatcher__factory } from "./DarkPoolMatcher__factory";
 export { DarkPoolSettlement__factory } from "./DarkPoolSettlement__factory";
+export { PrivaDEXMatcher__factory } from "./PrivaDEXMatcher__factory";

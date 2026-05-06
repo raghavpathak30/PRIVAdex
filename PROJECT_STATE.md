@@ -29,12 +29,20 @@ Source of truth used: DARKPOOL_SPEC_v2.md (Version 2.0).
 
 ## Recent Milestones (May 2026)
 
-- **DarkPoolMatcher.sol deployed to Sepolia** (block 10801591):
   - Address: `0x5dB289f443C13A586aF567f379859b7aA06A8380`
   - Functions: `submitOrder(orderId, encPrice, encQty, proof)`, `tryMatch(bidId, askId)`, `requestDecryption(bidId)`, `getOrder(orderId)`
   - Uses fhEVM v0.9 encrypted integer arithmetic: `FHE.eq()` for price comparison, `FHE.select()` for conditional qty settlement
   - Implements ACL grants via `FHE.allow()` for trader-scoped decryption requests
 
+- **PrivaDEXMatcher.sol deployed to Sepolia** (block 10802617):
+	- Address: `0x8CC6de883EbDDF11fE58a56bDC24BC8606D06710`
+	- Functions: `submitOrder(orderId, encPrice, encQty, priceProof, qtyProof, isBid)` — accepts separated price/qty proofs
+	- `matchOrders(bidId, askId)` — performs encrypted bid-ask matching using `FHE.ge()` (price ≥ ask), `FHE.and()` (combined condition), `FHE.select()` for 1/0 result
+	- `requestPublicDecryption(requestId)` — enables `FHE.makePubliclyDecryptable()` for v0.9 relayer SDK flow
+	- `getMatchResult(requestId)` — returns encrypted match result with per-trader ACL validation
+	- Uses fhEVM v0.9 encrypted integer arithmetic (euint64, ebool) for fully encrypted on-chain matching
+	- Implements fine-grained ACL grants via `FHE.allow()` and `FHE.allowThis()` for counterparty decryption
+	- Deployment script: `scripts/deploy_privadex_matcher_direct.js` (direct ethers.js deployment bypassing fhEVM plugin mocking)
 - **Frontend hook `useDarkPool.ts`** (121 lines):
   - Integrates Zama relayer SDK v0.4.3 via `/web` subpath entrypoint
   - Dynamic deployment artifact loading from `/deployments/sepolia/DarkPoolMatcher.json`

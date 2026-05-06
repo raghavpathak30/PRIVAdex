@@ -6,6 +6,7 @@ PrivaDEX DarkPool is a privacy-preserving DEX matching engine prototype that per
 
 - **DarkPoolMatcher (Sepolia)**: `0x5dB289f443C13A586aF567f379859b7aA06A8380` — on-chain fhEVM encrypted order matching
 - **Frontend demo**: Start via `cd frontend && npm run dev` (Next.js 14 with live order submission UI)
+- **PrivaDEXMatcher (Sepolia)**: `0x8CC6de883EbDDF11fE58a56bDC24BC8606D06710` — explicit separated-proof fhEVM encrypted bid-ask matching
 - **DarkPoolSettlement (legacy)**: `0x531d76b2C94899017e94158304DF32C2188FFA23` — off-chain settlement stub
 
 ## End-to-End Workflow

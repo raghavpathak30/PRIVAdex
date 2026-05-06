@@ -1,0 +1,209 @@
+{
+  "address": "0x8CC6de883EbDDF11fE58a56bDC24BC8606D06710",
+  "abi": [
+    {
+      "inputs": [],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "ZamaProtocolUnsupported",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "bidId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "askId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "MatchAttempted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "euint64",
+          "name": "result",
+          "type": "bytes32"
+        }
+      ],
+      "name": "MatchResultStored",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "orderId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "trader",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "isBid",
+          "type": "bool"
+        }
+      ],
+      "name": "OrderSubmitted",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "confidentialProtocolId",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "getMatchResult",
+      "outputs": [
+        {
+          "internalType": "euint64",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "bidId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "askId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "matchOrders",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "requestPublicDecryption",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "orderId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "externalEuint64",
+          "name": "encryptedPrice",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "externalEuint64",
+          "name": "encryptedQty",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes",
+          "name": "priceProof",
+          "type": "bytes"
+        },
+        {
+          "internalType": "bytes",
+          "name": "qtyProof",
+          "type": "bytes"
+        },
+        {
+          "internalType": "bool",
+          "name": "isBid",
+          "type": "bool"
+        }
+      ],
+      "name": "submitOrder",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "blockNumber": 10802617,
+  "network": "sepolia",
+  "deployer": "0x58D92f7f4D27d959F12078fd4C95eF042Aefcb6d",
+  "timestamp": 1778088900,
+  "transactionHash": "0xc5211af6c4c4ee024ba455c4465e8bc885c2411694542fc8abea7dfbf4308103"
+}

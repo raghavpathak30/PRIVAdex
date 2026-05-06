@@ -53,6 +53,10 @@ declare module "hardhat/types/runtime" {
       name: "PrivaDEXDarkPoolFHEVM",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.PrivaDEXDarkPoolFHEVM__factory>;
+    getContractFactory(
+      name: "PrivaDEXMatcher",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.PrivaDEXMatcher__factory>;
 
     getContractAt(
       name: "ZamaConfig",
@@ -104,6 +108,11 @@ declare module "hardhat/types/runtime" {
       address: string | ethers.Addressable,
       signer?: ethers.Signer
     ): Promise<Contracts.PrivaDEXDarkPoolFHEVM>;
+    getContractAt(
+      name: "PrivaDEXMatcher",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.PrivaDEXMatcher>;
 
     deployContract(
       name: "ZamaConfig",
@@ -145,6 +154,10 @@ declare module "hardhat/types/runtime" {
       name: "PrivaDEXDarkPoolFHEVM",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.PrivaDEXDarkPoolFHEVM>;
+    deployContract(
+      name: "PrivaDEXMatcher",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.PrivaDEXMatcher>;
 
     deployContract(
       name: "ZamaConfig",
@@ -196,6 +209,11 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.PrivaDEXDarkPoolFHEVM>;
+    deployContract(
+      name: "PrivaDEXMatcher",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.PrivaDEXMatcher>;
 
     // default types
     getContractFactory(

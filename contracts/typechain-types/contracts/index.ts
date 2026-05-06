@@ -5,3 +5,4 @@ import type * as privaDexDarkPoolFhEvmSol from "./PrivaDEXDarkPool.fhEVM.sol";
 export type { privaDexDarkPoolFhEvmSol };
 export type { DarkPoolMatcher } from "./DarkPoolMatcher";
 export type { DarkPoolSettlement } from "./DarkPoolSettlement";
+export type { PrivaDEXMatcher } from "./PrivaDEXMatcher";
