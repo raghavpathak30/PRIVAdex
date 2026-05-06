@@ -8,17 +8,22 @@ import type { BrowserProvider } from 'ethers';
 // or deploy first.
 
 async function loadDeployment() {
-  try {
-    const response = await fetch('/deployments/sepolia/DarkPoolMatcher.json', { cache: 'no-store' });
+  const candidatePaths = [
+    '/deployments/sepolia/PrivaDEXMatcher.json',
+    '/deployments/sepolia/DarkPoolMatcher.json',
+  ];
+
+  for (const deployPath of candidatePaths) {
+    const response = await fetch(deployPath, { cache: 'no-store' });
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      continue;
     }
 
     const dep = await response.json();
     return dep;
-  } catch (err) {
-    throw new Error('Matcher deployment artifact not found at /deployments/sepolia/DarkPoolMatcher.json. Deploy DarkPoolMatcher and copy the artifact into frontend/public.');
   }
+
+  throw new Error('Matcher deployment artifact not found at /deployments/sepolia/PrivaDEXMatcher.json or /deployments/sepolia/DarkPoolMatcher.json.');
 }
 
 async function loadRelayerSdk() {
@@ -50,14 +55,23 @@ export function useDarkPool() {
     const signer = await provider.getSigner();
 
     const createInstance = sdk.createInstance;
-    const SepoliaConfig = sdk.SepoliaConfig;
+    const SepoliaConfig = sdk.SepoliaConfigV2 || sdk.SepoliaConfig;
 
     if (!createInstance || !SepoliaConfig) {
       throw new Error("Relayer SDK does not expose 'createInstance' / 'SepoliaConfig' — check SDK version and API.");
     }
 
+    if (typeof sdk.initSDK === 'function') {
+      await sdk.initSDK();
+    }
+
+    const relayerUrl = typeof SepoliaConfig.relayerUrl === 'string' && SepoliaConfig.relayerUrl.endsWith('/v2')
+      ? SepoliaConfig.relayerUrl
+      : `${String(SepoliaConfig.relayerUrl || 'https://relayer.testnet.zama.org').replace(/\/$/, '')}/v2`;
+
     const fhevm = await createInstance({
       ...SepoliaConfig,
+      relayerUrl,
       network: (window as any).ethereum,
     });
 
@@ -80,7 +94,14 @@ export function useDarkPool() {
     }
 
     const contract = new ethers.Contract(contractAddress, abi, signer);
-    const tx = await contract.submitOrder(orderId, handles[0], handles[1], inputProof);
+    const submitOrderFn = contract.interface.getFunction('submitOrder');
+    const hasSeparatedProofSubmit = typeof (contract as any).submitOrder === 'function'
+      && submitOrderFn !== null
+      && submitOrderFn.inputs.length === 6;
+
+    const tx = hasSeparatedProofSubmit
+      ? await contract.submitOrder(orderId, handles[0], handles[1], inputProof, inputProof, true)
+      : await contract.submitOrder(orderId, handles[0], handles[1], inputProof);
     await tx.wait();
     return tx;
   }, []);
@@ -95,12 +116,14 @@ export function useDarkPool() {
     const provider = new ethers.BrowserProvider((window as any).ethereum as any) as BrowserProvider;
     const signer = await provider.getSigner();
     const contract = new ethers.Contract(contractAddress, abi, signer);
-    const tx = await contract.tryMatch(bidId, askId);
+    const tx = typeof (contract as any).matchOrders === 'function'
+      ? await contract.matchOrders(bidId, askId)
+      : await contract.tryMatch(bidId, askId);
     await tx.wait();
     return tx;
   }, []);
 
-  const requestDecryption = useCallback(async (bidId: string) => {
+  const requestDecryption = useCallback(async (requestId: string) => {
     const deployment = await loadDeployment();
     const contractAddress = deployment.address;
     const abi = deployment.abi;
@@ -110,7 +133,9 @@ export function useDarkPool() {
     const provider = new ethers.BrowserProvider((window as any).ethereum as any) as BrowserProvider;
     const signer = await provider.getSigner();
     const contract = new ethers.Contract(contractAddress, abi, signer);
-    const tx = await contract.requestDecryption(bidId);
+    const tx = typeof (contract as any).requestPublicDecryption === 'function'
+      ? await contract.requestPublicDecryption(requestId)
+      : await contract.requestDecryption(requestId);
     await tx.wait();
     return tx;
   }, []);
