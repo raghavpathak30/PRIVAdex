@@ -86,6 +86,30 @@ For the full 17-hop encrypted data lifecycle, slot layout, key custody model, an
 - [contracts](contracts): settlement contract stub and deployment helper
 - [evidence](evidence): benchmark/analysis artifacts for review
 
+## Deployment
+
+The primary settle contract is [contracts/DarkPoolSettlement.sol](contracts/DarkPoolSettlement.sol), which performs on-chain FHE matching using Zama fhEVM v0.9 primitives:
+
+- **Deployed address (Sepolia):** `0x531d76b2C94899017e94158304DF32C2188FFA23`
+- **Etherscan link:** https://sepolia.etherscan.io/address/0x531d76b2C94899017e94158304DF32C2188FFA23
+- **Settlement contract upgrades:**
+  - `settleMatch()` now accepts two encrypted prices (`encPriceA`, `encPriceB`) and performs on-chain comparison via `FHE.eq()`.
+  - Uses `FHE.fromExternal()` to decrypt external encrypted inputs.
+  - Applies `FHE.allowThis()` and `FHE.allow()` to enable authorized access for counterparties and settler.
+
+### Redeployment
+
+To redeploy from scratch:
+
+```bash
+cd contracts
+npm install
+npx hardhat compile
+npx hardhat run scripts/deploy.ts --network sepolia
+```
+
+The deployment writes `contracts/deployment.json` with the contract address, network, and timestamp for auditing and CI/CD integration.
+
 ## fhEVM Port
 
 Phase A introduces [contracts/PrivaDEXDarkPool.fhEVM.sol](contracts/PrivaDEXDarkPool.fhEVM.sol), an on-chain fhEVM translation of the SEAL BFV equality matching path. It ports the core match primitive from BFV equality evaluation to `TFHE.eq()` and computes encrypted match quantity with `TFHE.select()`, while preserving authorized-settler execution control for match finalization.

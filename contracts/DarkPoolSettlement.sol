@@ -45,16 +45,20 @@ contract DarkPoolSettlement is ZamaEthereumConfig {
 
     function settleMatch(
         bytes32 requestId,
-        externalEuint64 encryptedResult,
-        bytes calldata inputProof
+        externalEuint64 encPriceA,
+        bytes calldata inputProofA,
+        externalEuint64 encPriceB,
+        bytes calldata inputProofB
     ) external onlyAuthorizedSettler {
         require(requestId != bytes32(0), "request id required");
         require(counterparties[requestId][0] != address(0) && counterparties[requestId][1] != address(0), "order not registered");
         require(!FHE.isInitialized(matchResults[requestId]), "Already settled");
 
-        euint64 result = FHE.fromExternal(encryptedResult, inputProof);
-        ebool matched = FHE.eq(result, FHE.asEuint64(1));
-        euint64 finalResult = FHE.select(matched, result, FHE.asEuint64(0));
+        euint64 priceA = FHE.fromExternal(encPriceA, inputProofA);
+        euint64 priceB = FHE.fromExternal(encPriceB, inputProofB);
+
+        ebool matched = FHE.eq(priceA, priceB);
+        euint64 finalResult = FHE.select(matched, priceA, FHE.asEuint64(0));
 
         matchResults[requestId] = finalResult;
 
