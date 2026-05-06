@@ -243,13 +243,13 @@ export default function Home() {
           </div>
         </section>
 
-        <section id="demo" className="mx-auto max-w-[1320px] px-5 pb-8 lg:px-8">
+        <section id="demo" className="mx-auto max-w-[1320px] px-5 pb-12 lg:px-8">
           {/* Header */}
-          <div className="mb-6 flex items-start justify-between gap-6">
+          <div className="mb-8 flex items-start justify-between gap-6">
             <div>
-              <h2 className="text-3xl font-semibold text-[#111827]">Trading Terminal</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#4B5563]">
-                Register BID and ASK orders encrypted on fhEVM, then match them privately. What you submit stays between you and the contract.
+              <h2 className="text-3xl font-semibold text-[#111827]">Live Demo</h2>
+              <p className="mt-2 max-w-2xl text-base leading-7 text-[#4B5563]">
+                Register two orders (BID and ASK) on Sepolia, then match them with encrypted price discovery. The intent stays private, the settlement is on-chain and verifiable.
               </p>
             </div>
             {!walletConnected ? (
@@ -280,8 +280,8 @@ export default function Home() {
           <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr] mb-6">
             {/* LEFT PANEL: Place Order */}
             <div className="rounded-[2rem] border border-[#DED3C3] bg-white/80 p-6 shadow-[0_20px_60px_rgba(17,24,39,0.06)]">
-              <h3 className="text-xl font-semibold text-[#111827]">Place Order</h3>
-              <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[#8B6F47]">Encrypted on fhEVM</p>
+              <h3 className="text-xl font-semibold text-[#111827]">Submit Order</h3>
+              <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[#8B6F47]">Protected by fhEVM</p>
 
               {/* BID/ASK Toggle */}
               <div className="mt-5 flex gap-3">
@@ -373,7 +373,7 @@ export default function Home() {
 
             {/* RIGHT PANEL: Order Book / Match */}
             <div className="rounded-[2rem] border border-[#DED3C3] bg-white/80 p-6 shadow-[0_20px_60px_rgba(17,24,39,0.06)]">
-              <h3 className="text-xl font-semibold text-[#111827]">Order Book & Match</h3>
+              <h3 className="text-xl font-semibold text-[#111827]">Execute Match</h3>
               <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[#8B6F47]">Encrypted matching</p>
 
               {/* BID Order ID */}
@@ -404,8 +404,7 @@ export default function Home() {
 
               {/* Info box */}
               <div className="mt-5 rounded-2xl border border-[#E5DCCF] bg-[#FBF8F4] px-4 py-3 text-xs text-[#374151]">
-                <p className="font-medium">Algorithm:
-                  BID price ≥ ASK price → Match</p>
+                <p className="font-medium">✓ Match if: BID price ≥ ASK price</p>
               </div>
 
               {/* Request Match Button */}
@@ -508,27 +507,22 @@ export default function Home() {
         </section>
 
         <section id="contract" className="mx-auto max-w-[1320px] px-5 pb-14 lg:px-8">
-          <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="rounded-[2rem] border border-[#DED3C3] bg-white/80 p-6 shadow-[0_20px_60px_rgba(17,24,39,0.06)]">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#8B6F47]">Deployed contract</p>
-              <h2 className="mt-3 text-2xl font-semibold text-[#111827]">Sepolia address</h2>
-              <p className="mt-2 text-sm leading-6 text-[#4B5563]">
-                The deployed settlement contract stays visible here so the pitch can point at a real chain target instead of a mock route.
-              </p>
-              <div className="mt-5 rounded-3xl border border-[#E5DCCF] bg-[#FBF8F4] p-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-[#8B6F47]">Contract</p>
-                <p className="mt-2 break-all text-sm text-[#111827]">{CONTRACT_ADDRESS}</p>
+          <div className="rounded-[2rem] border border-[#DED3C3] bg-white/80 p-6 shadow-[0_20px_60px_rgba(17,24,39,0.06)]">
+            <p className="text-xs uppercase tracking-[0.18em] text-[#8B6F47]">Sepolia testnet</p>
+            <h2 className="mt-3 text-2xl font-semibold text-[#111827]">Deployed Contract</h2>
+            <p className="mt-2 text-sm leading-6 text-[#4B5563]">
+              This PrivaDEXMatcher contract runs live on Sepolia. Every order registration and match is verifiable on-chain while keeping the price encrypted inside the fhEVM circuit.
+            </p>
+            <div className="mt-5 rounded-3xl border border-[#E5DCCF] bg-[#FBF8F4] p-4 gap-4 grid sm:grid-cols-2">
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-[#8B6F47]">Contract Address</p>
+                <a href={`https://sepolia.etherscan.io/address/${CONTRACT_ADDRESS}`} target="_blank" rel="noreferrer" className="mt-2 break-all text-sm text-[#0066CC] hover:text-[#0052A3] font-mono underline">
+                  {CONTRACT_ADDRESS}
+                </a>
               </div>
-            </div>
-
-            <div className="rounded-[2rem] border border-[#DED3C3] bg-[#111827] p-6 text-white shadow-[0_20px_60px_rgba(17,24,39,0.08)]">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#F5D0A9]">Why the old flow broke</p>
-              <p className="mt-3 text-xl leading-9 text-white/92">
-                The frontend was fabricating ciphertext and proof bytes, which made fhEVM revert during gas estimation. That is now replaced with a truthful handoff: the order registers on-chain, and the settlement step waits for real encrypted material.
-              </p>
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">No fake settleMatch() call</div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">No architecture/benchmark routes in the nav</div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-[#8B6F47]">Network</p>
+                <p className="mt-2 text-sm font-medium text-[#111827]">Sepolia (Chain ID: 11155111)</p>
               </div>
             </div>
           </div>
