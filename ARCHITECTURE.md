@@ -82,7 +82,62 @@ Small residual overhead comes from control-path work (nonce checks and bookkeepi
 - Replay gate: nonce persistence in SQLite3 across process restarts.
 - Scheme policy: server enforces pool-level scheme registry by `pool_id` and overrides conflicting client flags.
 
-## On-Chain Settlement Boundary
+## Browser → Contract Flow (May 2026)
+
+### Encrypted Order Submission Path
+
+1. **Browser Order Input**:
+   - User enters price, quantity, and order ID in Next.js frontend
+   - MetaMask wallet connection via ethers `BrowserProvider`
+
+2. **Browser-Side Encryption** (Zama Relayer SDK v0.4.3):
+   - Dynamic import of `@zama-fhe/relayer-sdk/web` (critical: not root export)
+   - `createInstance({ ...SepoliaConfig, network: window.ethereum })`
+   - `fhevm.createEncryptedInput(matcherAddress, userAddress)`
+   - `input.add64(price)` → `input.add64(qty)` → `encrypted = await input.encrypt()`
+   - Returns `{ handles: [handle₁, handle₂], inputProof }`
+
+3. **Contract Submission**:
+   - `submitOrder(orderId, handle₁, handle₂, inputProof)`
+   - Contract converts external handles via `FHE.fromExternal(handle, inputProof, inputType)`
+   - Stores encrypted price/qty in contract state, grantsACL for trader
+
+### Encrypted Matching Path
+
+4. **On-Chain Matching**:
+   - `tryMatch(bidId, askId)`
+   - Retrieves bid order (encPrice_bid, encQty_bid) and ask order (encPrice_ask, encQty_ask)
+   - Calls `FHE.eq(encPrice_bid, encPrice_ask)` → encrypted boolean result
+   - Calls `FHE.select(matchedFlag, encQty_bid, zero)` to conditionally settle quantity
+   - Stores encrypted result (price match + settled qty) in contract
+   - Emits `MatchSettled(bidId, askId)` event
+
+5. **Decryption Request & Reveal**:
+   - Browser calls `requestDecryption(bidId)` to signal match is readable
+   - Contract calls `FHE.makePubliclyDecryptable(encResult)` via relayer ACL
+   - Browser relayer SDK fetches encrypted result from contract state
+   - Relayer network decrypts off-chain and returns cleartext match result
+   - Match result displayed in browser UI
+
+## Deployment Artifact Strategy
+
+**Dual-Storage Pattern**:
+- Repo-level artifact: `deployments/sepolia/DarkPoolMatcher.json` (for Git history)
+- Frontend-public artifact: `frontend/public/deployments/sepolia/DarkPoolMatcher.json` (for browser `fetch()`)
+
+**Runtime Fetch** (not build-time):
+- Hook `useDarkPool.ts` calls `fetch('/deployments/sepolia/DarkPoolMatcher.json', { cache: 'no-store' })`
+- Returns `{ address, abi, blockNumber, network }`
+- Zero coupling between build-time and deployment state; supports live migration
+
+## Technical Constraints & Patterns
+
+1. **SDK Entrypoint**: Zama relayer SDK v0.4.3 exports from `/web` subpath, not root. Root export not available.
+2. **Node Engine**: SDK requires Node >=22 (strict). Environment uses Node 20.20.2; install succeeds but with warning.
+3. **Circular Dependency Warning**: Webpack circular dependency warning during frontend build is non-blocking (documented as acceptable).
+4. **Error Handling**: All SDK/artifact loading errors throw informative messages directing user to install or deploy first.
+
+## On-Chain Settlement Boundary (Legacy fhEVM v0.9)
 
 Settlement uses fhEVM v0.9 encrypted on-chain state for match results.
 

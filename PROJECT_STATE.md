@@ -27,7 +27,37 @@ Source of truth used: DARKPOOL_SPEC_v2.md (Version 2.0).
 - [x] Step 15: Settlement bridge (settle_bridge.py + Solidity stub)
 - [x] Step 16: Dummy-order cadence privacy heartbeat + server-side dummy drop + cadence verifier
 
-## Recent Milestones (April 2026)
+## Recent Milestones (May 2026)
+
+- **DarkPoolMatcher.sol deployed to Sepolia** (block 10801591):
+  - Address: `0x5dB289f443C13A586aF567f379859b7aA06A8380`
+  - Functions: `submitOrder(orderId, encPrice, encQty, proof)`, `tryMatch(bidId, askId)`, `requestDecryption(bidId)`, `getOrder(orderId)`
+  - Uses fhEVM v0.9 encrypted integer arithmetic: `FHE.eq()` for price comparison, `FHE.select()` for conditional qty settlement
+  - Implements ACL grants via `FHE.allow()` for trader-scoped decryption requests
+
+- **Frontend hook `useDarkPool.ts`** (121 lines):
+  - Integrates Zama relayer SDK v0.4.3 via `/web` subpath entrypoint
+  - Dynamic deployment artifact loading from `/deployments/sepolia/DarkPoolMatcher.json`
+  - Three main flows: `submitOrder(price, qty, orderId)`, `tryMatch(bidId, askId)`, `requestDecryption(bidId)`
+  - Handles encrypted input generation (`createEncryptedInput`, `add64`, `encrypt`) and contract calls
+
+- **Frontend UI wiring**:
+  - `frontend/pages/index.tsx` now calls `useDarkPool` hook functions instead of placeholder settlement
+  - Added match/reveal UI controls and result logging
+  - Landing page maintains humanized storytelling (removed "AI-ish" technical language)
+  - Removed architecture and benchmark routes; focused on core demo narrative
+
+- **TypeChain auto-generation**:
+  - 131+ type definition files for all contracts and fhEVM interfaces
+  - Full factory classes and Hardhat integration type defs
+  - Complete TypeScript support for contract deployment and interaction
+
+- **Deployment artifact dual-storage**:
+  - Repo-level: `deployments/sepolia/DarkPoolMatcher.json`
+  - Frontend-public: `frontend/public/deployments/sepolia/DarkPoolMatcher.json`
+  - Browser can fetch at runtime for zero build-time coupling
+
+## Prior Milestones (April 2026)
 
 - Dummy cadence privacy path completed end-to-end:
 	- `trader_client/trader_client.py`: `DummyManager` background heartbeat + `submit_dummy_order()` path.
@@ -82,6 +112,15 @@ Source of truth used: DARKPOOL_SPEC_v2.md (Version 2.0).
 - Helgrind limitation: Helgrind aborts inside SEAL 4.1.1 `MemoryPoolMT` before a complete report (known Valgrind/SEAL compatibility issue), so TSAN remains the authoritative race-detection gate.
 - Frontend production build (`cd frontend && npm run build`) passes after redesign.
 - Solidity compile (`npm run compile`) passes after fhEVM v0.9 migration.
+
+## Current Implementation Status (May 2026)
+
+- **On-Chain Matching**: ✅ DarkPoolMatcher deployed and operational on Sepolia
+- **Browser SDK Integration**: ✅ Relayer SDK v0.4.3 integrated for browser-side encryption
+- **Frontend Demo**: ✅ Full end-to-end order submission → match → reveal UI
+- **TypeScript Support**: ✅ Complete typechain types for contracts and fhEVM interfaces
+- **Artifact Management**: ✅ Dual-location deployment artifact strategy working
+- **GitHub Published**: ✅ All changes pushed to main branch
 
 ## Blocker Resolution (Post-Audit)
 

@@ -4,13 +4,22 @@ PrivaDEX DarkPool is a privacy-preserving DEX matching engine prototype that per
 
 ## Live Demo
 
-- DarkPoolMatcher (Sepolia): 0x5dB289f443C13A586aF567f379859b7aA06A8380
-- Frontend demo: (local) start via `cd frontend && npm run dev`
-- DarkPoolSettlement (legacy) address: 0x531d76b2C94899017e94158304DF32C2188FFA23
+- **DarkPoolMatcher (Sepolia)**: `0x5dB289f443C13A586aF567f379859b7aA06A8380` — on-chain fhEVM encrypted order matching
+- **Frontend demo**: Start via `cd frontend && npm run dev` (Next.js 14 with live order submission UI)
+- **DarkPoolSettlement (legacy)**: `0x531d76b2C94899017e94158304DF32C2188FFA23` — off-chain settlement stub
+
+## End-to-End Workflow
+
+1. **Browser → Relayer SDK**: User connects wallet and enters encrypted price/qty
+2. **Relayer SDK** (`@zama-fhe/relayer-sdk/web`): Encrypts price/qty handles via browser instance
+3. **Browser → DarkPoolMatcher**: Submits `submitOrder(orderId, handle₁, handle₂, proof)`
+4. **On-Chain Matching**: `tryMatch(bidId, askId)` uses `FHE.eq()` to compare encrypted prices
+5. **Result Storage**: Settled match stored as encrypted ciphertext until `requestDecryption()`
+6. **Browser Reveal**: Calls relayer to decrypt match result using same browser instance
 
 ## Hybrid Architecture
 
-PrivaDEX uses a two-layer FHE architecture. The SEAL engine provides fast off-chain pre-screening of candidate order pairs (mean ~35ms), reducing on-chain gas costs. Confirmed candidate pairs are then committed to `DarkPoolMatcher.sol` where fhEVM's coprocessor executes the binding confidential price equality check via `FHE.eq()` on `euint64` ciphertext handles. Neither layer ever sees plaintext order data.
+PrivaDEX now uses fhEVM v0.9 on Sepolia as the primary matching layer. The original SEAL engine remains available for off-chain pre-screening (mean ~35ms), reducing on-chain gas costs for batch mode. Confirmed candidate pairs are submitted to `DarkPoolMatcher.sol` where fhEVM's coprocessor executes the binding confidential price equality check via `FHE.eq()` on `euint64` ciphertext handles. Neither layer ever sees plaintext order data.
 
 ## Why This Matters
 
@@ -57,10 +66,45 @@ Latest benchmark gate result (`N=100`):
 
 Detailed methodology and gate definitions are in [BENCHMARK.md](BENCHMARK.md).
 
-## Build Instructions
+## Build & Deployment Instructions
+
+### Contracts & Frontend
 
 Prerequisites:
+- Node.js 20+ (Node 22+ recommended for relayer SDK)
+- Hardhat 2.28.6+
+- Next.js 14.2+
 
+Setup:
+
+```bash
+# Install root and contracts dependencies
+npm install
+cd contracts && npm install
+
+# Set environment for Sepolia deployment
+export ALCHEMY_API_KEY=<your-alchemy-key>
+export PRIVATE_KEY=<your-deployer-key>
+
+# Compile Solidity
+npm run compile
+
+# Deploy DarkPoolMatcher to Sepolia
+cd scripts && npx hardhat run deployMatcher.ts --network sepolia
+```
+
+Frontend:
+
+```bash
+cd frontend && npm install
+npm run dev          # local dev server
+npm run build        # production build
+npm run start        # production server
+```
+
+### Legacy SEAL Engine
+
+Prerequisites:
 - CMake (>= 3.20)
 - C++17 toolchain (GCC/Clang)
 - Python 3.10+
@@ -72,11 +116,6 @@ Build:
 ```bash
 cmake -S . -B build
 cmake --build build -j
-```
-
-Run tests:
-
-```bash
 ctest --test-dir build --output-on-failure
 ```
 
@@ -88,12 +127,22 @@ For the full 17-hop encrypted data lifecycle, slot layout, key custody model, an
 
 ## Repo Map
 
-- [he_core](he_core): FHE kernels and context definitions
-- [matching_server](matching_server): gRPC service and matching path
-- [trader_client](trader_client): Python client and settlement bridge
-- [proto](proto): protocol contract
-- [benchmarks](benchmarks): latency benchmark tooling
-- [contracts](contracts): settlement contract stub and deployment helper
+- [contracts](contracts)
+  - `contracts/DarkPoolMatcher.sol` — on-chain fhEVM matcher with encrypted input handling
+  - `contracts/DarkPoolSettlement.sol` — legacy settlement stub (v1.0, fhEVM v0.9)
+  - `scripts/deployMatcher.ts` — Hardhat Sepolia deployment script
+  - `typechain-types/` — auto-generated TypeScript types for contracts
+  
+- [frontend](frontend)
+  - `pages/index.tsx` — main demo landing page with order submission UI
+  - `hooks/useDarkPool.ts` — React hook for encrypted order flows (submit/match/reveal)
+  - `public/deployments/sepolia/` — deployment artifacts for browser runtime fetch
+  
+- [he_core](he_core): SEAL context wrappers and core encrypted kernels (legacy)
+- [matching_server](matching_server): gRPC service and matching path (legacy)
+- [trader_client](trader_client): Python client and settlement bridge (legacy)
+- [proto](proto): protocol contract (legacy)
+- [benchmarks](benchmarks): latency benchmark tooling (legacy)
 - [evidence](evidence): benchmark/analysis artifacts for review
 
 ## Deployment
