@@ -2,6 +2,16 @@
 
 PrivaDEX DarkPool is a privacy-preserving DEX matching engine prototype that performs matching over encrypted orders using Microsoft SEAL 4.1 with a hybrid BFV + CKKS design: BFV handles exact integer equality (price match) while CKKS supports approximate arithmetic for volume/slippage paths, with all 16 implementation steps complete, 14/14 ctests passing, and post-audit hardening blockers resolved.
 
+## Live Demo
+
+- DarkPoolMatcher (Sepolia): 0x5dB289f443C13A586aF567f379859b7aA06A8380
+- Frontend demo: (local) start via `cd frontend && npm run dev`
+- DarkPoolSettlement (legacy) address: 0x531d76b2C94899017e94158304DF32C2188FFA23
+
+## Hybrid Architecture
+
+PrivaDEX uses a two-layer FHE architecture. The SEAL engine provides fast off-chain pre-screening of candidate order pairs (mean ~35ms), reducing on-chain gas costs. Confirmed candidate pairs are then committed to `DarkPoolMatcher.sol` where fhEVM's coprocessor executes the binding confidential price equality check via `FHE.eq()` on `euint64` ciphertext handles. Neither layer ever sees plaintext order data.
+
 ## Why This Matters
 
 Public mempool order flow leaks bid/ask intent and creates a front-running surface. This project demonstrates a practical encrypted matching pipeline where plaintext order values are never exposed on the server-side matching path.
