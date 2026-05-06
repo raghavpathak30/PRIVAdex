@@ -43,7 +43,8 @@ export function useDarkPool() {
     }
 
     const deployment = await loadDeployment();
-    const contractAddress = deployment.address;
+    // Checksum contract address for relayer SDK compatibility
+    const contractAddress = ethers.getAddress(deployment.address);
     const abi = deployment.abi;
 
     const sdk = await loadRelayerSdk();
@@ -51,7 +52,9 @@ export function useDarkPool() {
     // Create provider/signer using the same BrowserProvider pattern used elsewhere
     const provider = new ethers.BrowserProvider((window as any).ethereum as any) as BrowserProvider;
     const accounts = await provider.send('eth_requestAccounts', []);
-    const userAddress = accounts[0];
+    const rawUserAddress = accounts[0];
+    // Checksum the address because relayer SDK validator requires checksummed format
+    const userAddress = ethers.getAddress(rawUserAddress);
     const signer = await provider.getSigner();
 
     const createInstance = sdk.createInstance;
