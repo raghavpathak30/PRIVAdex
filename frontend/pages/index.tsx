@@ -19,7 +19,6 @@ type OrderRecord = {
   pair: string;
   timestamp: string;
   status: 'registered' | 'matched';
-  txHash?: string;
 };
 
 function nowLabel() {
@@ -31,7 +30,7 @@ function nowLabel() {
 }
 
 function makeRequestId() {
-  return ethers.id(`${Date.now()}-${Math.random()}`);
+  return ethers.hexlify(ethers.randomBytes(32));
 }
 
 export default function Home() {
@@ -41,7 +40,6 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMatching, setIsMatching] = useState(false);
   const [log, setLog] = useState<LogEntry[]>([]);
-  const [registerTxHash, setRegisterTxHash] = useState('');
   const [bidMatchId, setBidMatchId] = useState('');
   const [askMatchId, setAskMatchId] = useState('');
   const [orderType, setOrderType] = useState<'bid' | 'ask'>('bid');
@@ -50,17 +48,10 @@ export default function Home() {
   const [orderHistory, setOrderHistory] = useState<OrderRecord[]>([]);
   const [ethAmount, setEthAmount] = useState('1.5');
   const [usdcAmount, setUsdcAmount] = useState('3000');
-  const [copiedId, setCopiedId] = useState('');
   const { submitOrder, tryMatch } = useDarkPool();
 
   const addLog = (message: string, tone: StatusTone) => {
     setLog((prev) => [...prev, { message, tone, time: nowLabel() }]);
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(text);
-    setTimeout(() => setCopiedId(''), 2000);
   };
 
   const truncateAddress = (addr: string) => {
@@ -113,7 +104,6 @@ export default function Home() {
       const qty = BigInt(100);
 
       const tx = await submitOrder(price, qty, requestId, orderType === 'bid');
-      setRegisterTxHash(tx.hash ?? tx.transactionHash ?? '');
       setLastOrderId(requestId);
       setLastAction(`Order ${requestId.slice(0, 10)}... registered as ${orderType.toUpperCase()}`);
 
@@ -123,7 +113,6 @@ export default function Home() {
         pair: `ETH/USDC @ ${price}`,
         timestamp: nowLabel(),
         status: 'registered',
-        txHash: tx.hash ?? tx.transactionHash,
       };
       setOrderHistory((prev) => [newOrder, ...prev]);
 
@@ -159,7 +148,7 @@ export default function Home() {
     try {
       addLog('executing encrypted match', 'pending');
       const tx = await tryMatch(bidMatchId, askMatchId);
-      setLastAction(`Match confirmed ${(tx.hash ?? tx.transactionHash ?? '').slice(0, 12)}...`);
+      setLastAction('Match confirmed on Sepolia');
 
       setOrderHistory((prev) =>
         prev.map((order) =>
@@ -170,7 +159,7 @@ export default function Home() {
       );
 
       addLog('match executed on encrypted circuit', 'success');
-      addLog(`tx ${(tx.hash ?? tx.transactionHash ?? '').slice(0, 20)}...`, 'success');
+      addLog('match transaction confirmed', 'success');
     } catch (error) {
       console.error('Match error:', error);
       addLog(String(error).slice(0, 80), 'error');
@@ -379,16 +368,7 @@ export default function Home() {
               {lastOrderId && (
                 <div className="mt-4 rounded-md border border-white/10 bg-black/20 px-3 py-2">
                   <p className="text-[11px] uppercase tracking-[0.1em] text-white/40 [font-family:'IBM_Plex_Mono',monospace]">Order ID</p>
-                  <div className="mt-2 flex items-center justify-between gap-3">
-                    <span className="break-all text-xs text-white/80 [font-family:'IBM_Plex_Mono',monospace]">{lastOrderId.slice(0, 16)}...</span>
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(lastOrderId)}
-                      className="text-xs text-[#4af0a0] [font-family:'IBM_Plex_Mono',monospace]"
-                    >
-                      {copiedId === lastOrderId ? 'copied' : 'copy'}
-                    </button>
-                  </div>
+                  <p className="mt-2 break-all text-xs text-white/80 [font-family:'IBM_Plex_Mono',monospace]">{lastOrderId}</p>
                 </div>
               )}
 
@@ -422,16 +402,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {registerTxHash && (
-                <a
-                  href={`https://sepolia.etherscan.io/tx/${registerTxHash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-4 block rounded-md border border-[#4af0a0]/30 bg-[#4af0a0]/10 px-3 py-2 text-xs text-[#4af0a0] [font-family:'IBM_Plex_Mono',monospace]"
-                >
-                  Last TX {registerTxHash.slice(0, 16)}...
-                </a>
-              )}
             </div>
 
             <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5">

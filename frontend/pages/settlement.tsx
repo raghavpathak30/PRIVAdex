@@ -11,19 +11,9 @@ const FLOW_STEPS = [
 
 const CONTRACT_ADDRESS = '0x7A4f8D1Bf2A9c3E16D4e1f8B8c25A6fA9D8100Ce';
 
-function mockTxHash() {
-  const chars = '0123456789abcdef';
-  let hash = '0x';
-  for (let i = 0; i < 64; i += 1) {
-    hash += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return hash;
-}
-
 export default function SettlementPage() {
   const [activeStep, setActiveStep] = useState(-1);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [txHash, setTxHash] = useState('0x9ca3f1e32c9c2ea19495efadf11d6dc2f40f2f78ab38ffab8ed7442d289bd41e');
   const timeoutRefs = useRef<number[]>([]);
 
   useEffect(() => {
@@ -49,7 +39,6 @@ export default function SettlementPage() {
 
     const doneId = window.setTimeout(() => {
       setIsSubmitting(false);
-      setTxHash(mockTxHash());
     }, FLOW_STEPS.length * 700 + 250);
     timeoutRefs.current.push(doneId);
   };
@@ -131,10 +120,6 @@ export default function SettlementPage() {
               <div className="rounded-md border border-[#1C2A35] bg-[#050A0E] p-3">
                 <p className="text-xs text-[#4A6072]">Chain</p>
                 <p className="mt-1 text-[#E8F4F8]">Zama Devnet (9000)</p>
-              </div>
-              <div className="rounded-md border border-[#1C2A35] bg-[#050A0E] p-3">
-                <p className="text-xs text-[#4A6072]">TX Hash (mocked)</p>
-                <p className="mt-1 break-all text-[#00FF88]">{txHash}</p>
               </div>
             </div>
           </div>
