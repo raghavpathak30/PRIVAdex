@@ -2,6 +2,15 @@
 
 PrivaDEX DarkPool is a privacy-preserving DEX matching engine prototype that performs matching over encrypted orders using Microsoft SEAL 4.1 with a hybrid BFV + CKKS design: BFV handles exact integer equality (price match) while CKKS supports approximate arithmetic for volume/slippage paths, with all 16 implementation steps complete, 14/14 ctests passing, and post-audit hardening blockers resolved.
 
+## Frontend Experience
+
+The Next.js frontend has been fully reskinned to a dark, judge-facing product surface:
+
+- Theme: `#0a0a0f` base with `#4af0a0` accent and no light-mode/beige variants.
+- Typography: `Syne` for product copy and headings, `IBM Plex Mono` for chain data, labels, logs, and IDs.
+- Structure: focused narrative flow (`Problem` -> `How it works` -> `Demo` -> `Contract`) with a live, two-column hero explaining mempool exposure vs encrypted flow.
+- Demo UX: submit-order and execution-log panels kept intact functionally, but visually rebuilt for readability in live judging.
+
 ## Live Demo
 
 - **DarkPoolMatcher (Sepolia)**: `0x5dB289f443C13A586aF567f379859b7aA06A8380` — on-chain fhEVM encrypted order matching
@@ -125,6 +134,20 @@ Expected status: `14/14 tests PASS`.
 ## Architecture Pointer
 
 For the full 17-hop encrypted data lifecycle, slot layout, key custody model, and timing decomposition, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## fhEVM vs SEAL — What Runs Where
+
+| Computation Step   | Runs On            | Primitive Used / Notes |
+|--------------------|--------------------|------------------------|
+| Order submission   | fhEVM off-chain (browser) → Relayer / SEAL | Browser uses `@zama-fhe/relayer-sdk` to produce encrypted handles (CKKS/BFV) for submission; handles uploaded to chain via `externalEuintXX` |
+| Equality check     | fhEVM on-chain     | `FHE.eq()` on `euint32/euint64` (on-chain TFHE primitive) |
+| Price selection    | fhEVM on-chain     | `FHE.select()` (on-chain encrypted mux) |
+| Sign polynomial    | SEAL off-chain     | Degree-27 minimax sign polynomial (CKKS) executed in `he_core` for continuous-value scoring |
+| CKKS batching      | SEAL off-chain     | Slot packing, stride=512 layout and hoisted tree-sum (high-throughput batching) |
+| Settlement finalise| fhEVM on-chain + off-chain reveal | `FHE.makePubliclyDecryptable()` used on-chain; decryption performed by relayer/browser using trader keys off-chain |
+
+Rationale: equality and small conditional logic are compact, low-depth operations that map well to fhEVM's `euint` primitives and avoid excessive gas; high-degree polynomial evaluations and heavy CKKS arithmetic are latency-sensitive and benefit from the optimized native SEAL implementation (AVX/OpenMP) off-chain. This hybrid split minimizes on-chain gas and leverages SEAL's throughput for expensive kernels while retaining verifiable, minimal encrypted logic on-chain.
+
 
 ## Repo Map
 
