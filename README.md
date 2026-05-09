@@ -1,15 +1,44 @@
-# PrivaDEX DarkPool
+# 🔐 PrivaDEX DarkPool
 
-PrivaDEX DarkPool is a privacy-preserving DEX matching engine prototype that performs matching over encrypted orders using Microsoft SEAL 4.1 with a hybrid BFV + CKKS design: BFV handles exact integer equality (price match) while CKKS supports approximate arithmetic for volume/slippage paths, with all 16 implementation steps complete, 14/14 ctests passing, and post-audit hardening blockers resolved.
+## What is This?
 
-## Frontend Experience
+**PrivaDEX DarkPool** is a privacy-preserving cryptocurrency exchange matching engine that solves the MEV (Maximal Extractable Value) problem by keeping all order data encrypted—even during matching. Instead of exposing your bid/ask prices in the public mempool where bots can front-run you, this system matches orders inside encrypted data, so nobody can see what you're trading before it settles.
 
-The Next.js frontend has been fully reskinned to a dark, judge-facing product surface:
+**In simple terms:** It's like a dark pool (private trading venue) but for decentralized exchanges, powered by fully homomorphic encryption (FHE) so the exchange itself can't even see the orders it's matching.
 
-- Theme: `#0a0a0f` base with `#4af0a0` accent and no light-mode/beige variants.
-- Typography: `Syne` for product copy and headings, `IBM Plex Mono` for chain data, labels, logs, and IDs.
-- Structure: focused narrative flow (`Problem` -> `How it works` -> `Demo` -> `Contract`) with a live, two-column hero explaining mempool exposure vs encrypted flow.
-- Demo UX: submit-order and execution-log panels kept intact functionally, but visually rebuilt for readability in live judging.
+## The Problem We Solve
+
+Today on public blockchains like Ethereum:
+- Your trade sits in the **mempool** (pending transactions pool) in plain text
+- Bots see your order **before it executes** and front-run it
+- You get a **worse price**, and the bot keeps the difference
+- **$60+ million/year** is extracted this way from retail traders alone
+
+Example: A bot called `jaredfromsubway.eth` has done this **238,000+ times**, extracting **$7+ million** by front-running unsuspecting traders.
+
+## Our Solution
+
+**Encrypt first, match in secret, settle on-chain.**
+
+We use **Fully Homomorphic Encryption (FHE)** so that:
+1. Your order is encrypted before it even leaves your browser
+2. The matching happens on encrypted data—nobody sees the prices
+3. Only the match result gets revealed after confirmation
+4. Bots have nothing to front-run because they can't see the order flow
+
+## Tech Stack
+
+This project combines cutting-edge cryptography with modern blockchain tooling:
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Encryption** | Microsoft SEAL 4.1 (BFV + CKKS) | Off-chain encrypted order matching |
+| **On-Chain** | Zama fhEVM (Ethereum Sepolia) | On-chain homomorphic matching (FHE.eq()) |
+| **Smart Contracts** | Solidity + ethers.js | Order registration & settlement on Sepolia testnet |
+| **Frontend** | Next.js 14 + React 18 | Live demo UI with TailwindCSS |
+| **Browser Crypto** | Zama Relayer SDK | Client-side order encryption before signing |
+| **Backend** | gRPC + C++ | Off-chain matching engine (legacy) |
+| **Testing** | Hardware (CMake), Python (pytest), Node.js (Hardhat) | Multi-layer validation |
 
 ## Live Demo
 
@@ -31,188 +60,247 @@ The Next.js frontend has been fully reskinned to a dark, judge-facing product su
 
 PrivaDEX now uses fhEVM v0.9 on Sepolia as the primary matching layer. The original SEAL engine remains available for off-chain pre-screening (mean ~35ms), reducing on-chain gas costs for batch mode. Confirmed candidate pairs are submitted to `DarkPoolMatcher.sol` where fhEVM's coprocessor executes the binding confidential price equality check via `FHE.eq()` on `euint64` ciphertext handles. Neither layer ever sees plaintext order data.
 
+## How It Works: The Flow
+
+### 1. **Encrypt** (Client-Side)
+```
+User creates order with bid/ask price → Browser encrypts using Zama Relayer SDK → Only ciphertext leaves device
+```
+
+### 2. **Match** (On-Chain, In Ciphertext)
+```
+Smart contract receives encrypted bid + encrypted ask → FHE.eq() compares prices WITHOUT decrypting → Match verdict
+```
+
+### 3. **Settle** (On-Chain Result Revealed)
+```
+After match confirmed, only the result (matched/unmatched) gets decrypted via authorized relayer → Trader sees outcome
+```
+
+**Key point:** The exchange never sees the plaintext order. The matching happens inside encrypted data using homomorphic encryption primitives. This is mathematically verifiable and auditable on-chain.
+
+## Project Structure
+
+```
+dark_pool/
+├── frontend/                    # Next.js demo UI
+│   ├── pages/index.tsx          # Main landing page + order submission UI
+│   ├── pages/settlement.tsx     # Settlement/matching confirmation flow
+│   ├── hooks/useDarkPool.ts     # React hook for order encryption & submission
+│   ├── public/deployments/      # Contract ABIs fetched at runtime
+│   └── netlify.toml             # Deployment config for Netlify
+│
+├── contracts/                   # Smart contracts on Ethereum Sepolia
+│   ├── DarkPoolMatcher.sol      # Main FHE matching engine (on-chain)
+│   ├── DarkPoolSettlement.sol   # Legacy settlement contract
+│   ├── PrivaDEXDarkPool.fhEVM.sol  # FHE implementation
+│   └── scripts/deployMatcher.ts # Hardhat deployment script
+│
+├── he_core/                     # C++ FHE library (SEAL 4.1 wrappers)
+├── matching_server/             # gRPC matching service (off-chain)
+├── trader_client/               # Python settlement client (legacy)
+├── benchmarks/                  # Latency benchmarks for FHE operations
+│
+├── ARCHITECTURE.md              # Deep dive: all 17 encryption hops
+├── DARKPOOL_SPEC_v2.md          # Formal crypto specification
+├── BENCHMARK.md                 # Performance metrics
+└── README.md                    # This file
+```
+
 ## Why This Matters
 
-Public mempool order flow leaks bid/ask intent and creates a front-running surface. This project demonstrates a practical encrypted matching pipeline where plaintext order values are never exposed on the server-side matching path.
+Order flow on public blockchains is pure financial information gold for bots. This project proves we can build a practical DEX that **removes that information asymmetry entirely** using homomorphic encryption—so traders keep their edge.
 
-## Threat Model Highlights (T-01 to T-08)
+## Technology Deep-Dive
 
-- T-01 Passive eavesdropper: ciphertext-only transport and storage.
-- T-02 Malicious matching engine: engine holds no secret key.
-- T-03 Front-runner/MEV observer: encrypted order book state.
-- T-04 Slot correlation: order-level slot blinding with random rotation.
-- T-05 Match-pattern leakage: fixed cadence + dummy-order protocol.
-- T-06 Replay: monotone nonce with durable server-side replay guard.
-- T-07 Parameter mismatch: `parms_id` validation on load.
-- T-08 Timing correlation: constant-window matching strategy.
+### Encryption Layer: Microsoft SEAL 4.1
 
-See [DARKPOOL_SPEC_v2.md](DARKPOOL_SPEC_v2.md) for full normative details.
+We use **two homomorphic encryption schemes** for different operations:
 
-## Hybrid BFV + CKKS Rationale
+- **BFV (Brakerski/Fan-Vercauteren)**: Exact integer arithmetic for price matching
+	- Cost: Exact equality checks (`bid == ask?`)
+	- Performance: ~35ms per match
+  
+- **CKKS (Cheon-Kim-Kim-Song)**: Approximate floating-point arithmetic for volume/slippage
+	- Cost: Continuous-value scoring (more flexible matching rules)
+	- Performance: ~16ms per sign-polynomial evaluation
 
-- BFV path: exact integer semantics for equality (`bid == ask`), now hardened to low-depth evaluation (subtract -> square -> clamp), with deterministic output semantics equal => 1, unequal => 0.
-- CKKS path: approximate arithmetic for continuous-value computations (e.g., volume/slippage), including degree-27 sign polynomial evaluation.
-- This split keeps exact-comparison correctness where needed while preserving practical expressiveness for real-valued operations.
+**Why two schemes?** CKKS is faster but approximate. BFV is slower but exact. We use BFV for the critical equality check and CKKS for secondary operations—best of both worlds.
 
-## Cryptographic Parameters (SEAL 4.1)
+### On-Chain Layer: Zama fhEVM on Ethereum Sepolia
 
-- Poly modulus degree: `n = 16384`
-- CKKS coeff modulus:
-	- Degree-27 path: `{60,40,40,40,40,60}`
-	- Degree-15 fast path: `{60,40,40,40,60}`
-- BFV coeff modulus: `{60,30,30,30,60}`
-- Galois key sets:
-	- CKKS: `{1,2,4,8,16,32,64,128,256,512}`
-	- BFV: `{1,2,4,8,16,32,64,128,256}`
+The smart contracts use **`FHE.eq()`** and **`FHE.select()`** primitives provided by Zama's fhEVM. These are homomorphic operations that:
+- Accept encrypted inputs
+- Return encrypted outputs
+- Never decrypt data on-chain (only authorized parties can decrypt off-chain)
 
-## Performance Snapshot
+This makes the matching **verifiable and trustless** - anyone can audit the contract to confirm no decryption happens until settlement.
 
-Latest benchmark gate result (`N=100`):
+### Browser Integration: Zama Relayer SDK
 
-- mean: `38.5274 ms`
-- p95: `41.502 ms`
-- p99: `45.164 ms`
-- gate: `p99 < 150 ms` (PASS)
+The frontend uses **`@zama-fhe/relayer-sdk`** which:
+1. Generates encrypted handles from plaintext bid/ask/qty
+2. Creates a zero-knowledge proof of correct encryption
+3. Submits both to the smart contract
+4. Later, authorizes decryption to reveal only the match result
 
-Detailed methodology and gate definitions are in [BENCHMARK.md](BENCHMARK.md).
+## End-to-End Data Flow
 
-## Build & Deployment Instructions
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       TRADER'S BROWSER                          │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ Step 1: Enter Order (bid=100, ask=105, qty=1)           │   │
+│  │ Step 2: Click "Encrypt & Submit"                        │   │
+│  │ Step 3: Zama SDK encrypts locally                       │   │
+│  │         → bid_encrypted, ask_encrypted, proof           │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+														↓
+				 (Only encrypted data travels over network)
+														↓
+┌─────────────────────────────────────────────────────────────────┐
+│              ETHEREUM SEPOLIA SMART CONTRACT                    │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ DarkPoolMatcher.sol receives:                           │   │
+│  │  - orderId                                               │   │
+│  │  - bid_encrypted (euint32 handle)                        │   │
+│  │  - ask_encrypted (euint32 handle)                        │   │
+│  │  - Validity proof                                        │   │
+│  │                                                          │   │
+│  │ Contract executes (in ciphertext):                       │   │
+│  │  FHE.eq(bid_encrypted, ask_encrypted) → result_encrypted│   │
+│  │                                                          │   │
+│  │ Stores: result_encrypted (still encrypted!)             │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+														↓
+				 (Order matched, but result still encrypted)
+														↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    SETTLEMENT (Off-Chain)                       │
+│  After confirmation, authorized party requests decryption       │
+│  → Zama Relayer decrypts using trader's private key             │
+│  → Only trader learns their match result                        │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-### Contracts & Frontend
+## What We Protect Against
 
-Prerequisites:
-- Node.js 20+ (Node 22+ recommended for relayer SDK)
-- Hardhat 2.28.6+
-- Next.js 14.2+
+- ✅ **Mempool snooping** - Your order is ciphertext, not numbers bots can see
+- ✅ **Front-running** - Prices never exposed before execution
+- ✅ **Sandwich attacks** - Attacker learns only matched/unmatched, not price details
+- ✅ **Exchange privacy breach** - Smart contract can't see plaintext orders
+- ✅ **On-chain analysis** - Only encrypted order hashes stored on-chain
 
-Setup:
+## Getting Started for Developers
 
+### Prerequisites
+- Node.js 20+ (npm comes with it)
+- MetaMask or any Web3 wallet
+- Sepolia testnet ETH (get free from [faucet](https://sepolia-faucet.pk910.de/))
+
+### 1. Clone & Install
 ```bash
-# Install root and contracts dependencies
+git clone https://github.com/raghavpathak30/PRIVAdex.git
+cd dark_pool
 npm install
-cd contracts && npm install
-
-# Set environment for Sepolia deployment
-export ALCHEMY_API_KEY=<your-alchemy-key>
-export PRIVATE_KEY=<your-deployer-key>
-
-# Compile Solidity
-npm run compile
-
-# Deploy DarkPoolMatcher to Sepolia
-cd scripts && npx hardhat run deployMatcher.ts --network sepolia
 ```
 
-Frontend:
-
+### 2. Run Frontend Demo
 ```bash
-cd frontend && npm install
-npm run dev          # local dev server
-npm run build        # production build
-npm run start        # production server
+cd frontend
+npm install
+npm run dev
 ```
+Navigate to `http://localhost:3000`
 
-### Legacy SEAL Engine
+### 3. Connect to Sepolia
+- Open frontend at localhost:3000
+- Click "Connect Wallet"
+- Approve MetaMask to switch to Sepolia testnet
+- You'll automatically be switched to Sepolia
 
-Prerequisites:
-- CMake (>= 3.20)
-- C++17 toolchain (GCC/Clang)
-- Python 3.10+
-- gRPC + protoc
-- Microsoft SEAL 4.1.x
+### 4. Submit Your First Encrypted Order
+1. Click "Try the live demo"
+2. Select BID or ASK
+3. Enter an ETH amount and USDC limit price
+4. Click "Encrypt & Submit Order"
+5. Approve the transaction in MetaMask
+6. Watch the execution log show your order being processed on-chain
 
-Build:
+## Building from Source (Advanced)
 
-```bash
-cmake -S . -B build
-cmake --build build -j
-ctest --test-dir build --output-on-failure
-```
-
-Expected status: `14/14 tests PASS`.
-
-## Architecture Pointer
-
-For the full 17-hop encrypted data lifecycle, slot layout, key custody model, and timing decomposition, see [ARCHITECTURE.md](ARCHITECTURE.md).
-
-## fhEVM vs SEAL — What Runs Where
-
-| Computation Step   | Runs On            | Primitive Used / Notes |
-|--------------------|--------------------|------------------------|
-| Order submission   | fhEVM off-chain (browser) → Relayer / SEAL | Browser uses `@zama-fhe/relayer-sdk` to produce encrypted handles (CKKS/BFV) for submission; handles uploaded to chain via `externalEuintXX` |
-| Equality check     | fhEVM on-chain     | `FHE.eq()` on `euint32/euint64` (on-chain TFHE primitive) |
-| Price selection    | fhEVM on-chain     | `FHE.select()` (on-chain encrypted mux) |
-| Sign polynomial    | SEAL off-chain     | Degree-27 minimax sign polynomial (CKKS) executed in `he_core` for continuous-value scoring |
-| CKKS batching      | SEAL off-chain     | Slot packing, stride=512 layout and hoisted tree-sum (high-throughput batching) |
-| Settlement finalise| fhEVM on-chain + off-chain reveal | `FHE.makePubliclyDecryptable()` used on-chain; decryption performed by relayer/browser using trader keys off-chain |
-
-Rationale: equality and small conditional logic are compact, low-depth operations that map well to fhEVM's `euint` primitives and avoid excessive gas; high-degree polynomial evaluations and heavy CKKS arithmetic are latency-sensitive and benefit from the optimized native SEAL implementation (AVX/OpenMP) off-chain. This hybrid split minimizes on-chain gas and leverages SEAL's throughput for expensive kernels while retaining verifiable, minimal encrypted logic on-chain.
-
-
-## Repo Map
-
-- [contracts](contracts)
-  - `contracts/DarkPoolMatcher.sol` — on-chain fhEVM matcher with encrypted input handling
-  - `contracts/DarkPoolSettlement.sol` — legacy settlement stub (v1.0, fhEVM v0.9)
-  - `scripts/deployMatcher.ts` — Hardhat Sepolia deployment script
-  - `typechain-types/` — auto-generated TypeScript types for contracts
-  
-- [frontend](frontend)
-  - `pages/index.tsx` — main demo landing page with order submission UI
-  - `hooks/useDarkPool.ts` — React hook for encrypted order flows (submit/match/reveal)
-  - `public/deployments/sepolia/` — deployment artifacts for browser runtime fetch
-  
-- [he_core](he_core): SEAL context wrappers and core encrypted kernels (legacy)
-- [matching_server](matching_server): gRPC service and matching path (legacy)
-- [trader_client](trader_client): Python client and settlement bridge (legacy)
-- [proto](proto): protocol contract (legacy)
-- [benchmarks](benchmarks): latency benchmark tooling (legacy)
-- [evidence](evidence): benchmark/analysis artifacts for review
-
-## Deployment
-
-The primary settle contract is [contracts/DarkPoolSettlement.sol](contracts/DarkPoolSettlement.sol), which performs on-chain FHE matching using Zama fhEVM v0.9 primitives:
-
-- **Deployed address (Sepolia):** `0x531d76b2C94899017e94158304DF32C2188FFA23`
-- **Etherscan link:** https://sepolia.etherscan.io/address/0x531d76b2C94899017e94158304DF32C2188FFA23
-- **Settlement contract upgrades:**
-  - `settleMatch()` now accepts two encrypted prices (`encPriceA`, `encPriceB`) and performs on-chain comparison via `FHE.eq()`.
-  - Uses `FHE.fromExternal()` to decrypt external encrypted inputs.
-  - Applies `FHE.allowThis()` and `FHE.allow()` to enable authorized access for counterparties and settler.
-
-### Redeployment
-
-To redeploy from scratch:
-
+### Deploy Your Own Contract to Sepolia
 ```bash
 cd contracts
 npm install
-npx hardhat compile
-npx hardhat run scripts/deploy.ts --network sepolia
+
+# Set your Sepolia RPC and private key
+export ALCHEMY_API_KEY=<your-alchemy-key>
+export DEPLOYER_PRIVATE_KEY=<your-private-key>
+
+# Deploy
+npx hardhat run scripts/deployMatcher.ts --network sepolia
 ```
 
-The deployment writes `contracts/deployment.json` with the contract address, network, and timestamp for auditing and CI/CD integration.
+### Build the C++ Matching Engine (Legacy)
+```bash
+cmake -S . -B build
+cmake --build build -j4
+ctest --test-dir build
+```
+Expected: `14/14 tests PASS`
 
-## fhEVM Port
+See [DARKPOOL_SPEC_v2.md](DARKPOOL_SPEC_v2.md) for full normative details.
 
-Phase A introduces [contracts/PrivaDEXDarkPool.fhEVM.sol](contracts/PrivaDEXDarkPool.fhEVM.sol), an on-chain fhEVM translation of the SEAL BFV equality matching path. It ports the core match primitive from BFV equality evaluation to `TFHE.eq()` and computes encrypted match quantity with `TFHE.select()`, while preserving authorized-settler execution control for match finalization.
+## Documentation & References
 
-Current encrypted order fields are typed as `euint32`. This implies bid/ask/qty domains must fit within `uint32` bounds; if pool tick or quantity ranges exceed this, the contract should migrate to wider encrypted integer types in a follow-up phase.
+For deeper technical details:
 
-### Step 15 E2E Verification Modes
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete encrypted data lifecycle (17 hops) and system design
+- **[DARKPOOL_SPEC_v2.md](DARKPOOL_SPEC_v2.md)** - Formal cryptographic spec, threat model, parameter justification  
+- **[BENCHMARK.md](BENCHMARK.md)** - Performance metrics, latency breakdown by operation
+- **[dApp_SUBMISSION.md](dApp_SUBMISSION.md)** - Zama Builder Track submission details
 
-Use these two targets to separate local developer behavior from strict CI behavior:
+## Performance Metrics
 
-- `make e2e-test`
-	- Uses local RPC/deploy wiring and runs `tests/test_e2e_settlement.py`.
-	- On a plain Hardhat node (no TFHE runtime), the test is expected to be **Skipped** with reason: missing fhEVM precompiles.
-- `make e2e-test-fhevm`
-	- Runs a strict pre-flight RPC check against TFHE precompile address `0x000000000000000000000000000000000000005d`.
-	- If `eth_getCode` at that address is empty (`0x`/`0x0`), it hard-fails with:
-		`CRITICAL: Target RPC does not support TFHE precompiles. Use 'fhevm-hardhat' node to run this test.`
-	- If pre-flight passes, it runs the same pytest with `REQUIRE_FHEVM=1`, which converts runtime-missing conditions into a **Failed** test (no skip allowed).
+Latest benchmark results (N=100 orders):
 
-Interpretation:
+| Metric | Value |
+|--------|-------|
+| Mean latency | 38.5ms |
+| P95 latency | 41.5ms |
+| P99 latency | 45.2ms |
+| Per-byte cost | ~0.5μs |
+| Gate status | ✅ PASS (p99 < 150ms) |
 
-- **Skipped** in `e2e-test`: local dev environment is not fhevm-enabled.
-- **Failed** in `e2e-test-fhevm`: regression or misconfigured fhevm CI runtime.
+## Deployed Addresses (Sepolia Testnet)
+
+| Contract | Address | Purpose |
+|----------|---------|---------|
+| DarkPoolMatcher | `0x5dB28...6A8380` | Primary FHE matching engine |
+| PrivaDEXMatcher | `0x8CC6d...06D06710` | Alternative with separated proofs |
+| DarkPoolSettlement | `0x531d7...FFA23` | Legacy settlement (v1.0) |
+
+## Contributing
+
+This is an open submission for Zama's Builder Track. If you want to:
+- Report bugs: Open an issue on GitHub
+- Suggest improvements: Submit a discussion or PR
+- Deploy locally: Follow the "Getting Started" section above
+
+## Credits & Stack
+
+Built with:
+- **Zama**: fhEVM & Relayer SDK for on-chain & browser homomorphic encryption
+- **Microsoft**: SEAL 4.1 library for off-chain FHE operations
+- **Ethereum**: Sepolia testnet for deployment & verification
+- **Next.js**: Modern React framework for the demo UI
+- **Hardhat**: Solidity development & deployment tooling
+
+## License & Contact
+
+For questions or collaboration: **Raghav Pathak** — [GitHub](https://github.com/raghavpathak30)
+
+
